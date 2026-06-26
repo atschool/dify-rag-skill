@@ -6,6 +6,7 @@ This repository contains two companion skills:
 
 - `dify-rag-inject`: prepare Google Drive documents as retrieval-friendly Markdown and send them to a Dify ingestion Workflow.
 - `dify-rag-search`: search Dify knowledge bases and return retrieved chunks so Claude can write the final answer.
+- `dify-rag` MCP server: expose Dify search to Claude.app / Claude Desktop.
 
 The design keeps responsibilities separate:
 
@@ -44,6 +45,7 @@ When you ask Claude Code to search the knowledge base, the search skill:
 - `search/SKILL.md`: search skill instructions.
 - `dify_inject.py`: Python client for calling Dify `/workflows/run`.
 - `dify_search.py`: Python client for Dify dataset listing and retrieval.
+- `mcp-server/`: local MCP server for Claude.app / Claude Desktop.
 - `install.sh`: interactive installer for both skills.
 - `config.example`: safe config template with no real URL or API key.
 
@@ -121,13 +123,51 @@ The installer will:
 
 - Copy the ingestion skill to `~/.claude/skills/dify-rag-inject/`.
 - Copy the search skill to `~/.claude/skills/dify-rag-search/`.
+- Copy the MCP server to `~/.dify-rag/mcp-server/`.
 - Check whether `pdftoppm` is available.
+- Install MCP server npm dependencies when Node.js and npm are available.
 - Create a shared local config at `~/.dify-rag/config`.
 - Ask for your Dify Workflow API key.
 - Ask for your Dify Knowledge Base API key.
 - Ask for your Dify API base URL if it is not already configured.
 
 The config file is local to your machine and is intentionally ignored by Git.
+
+## Claude.app / Claude Desktop MCP Setup
+
+Claude Code can read the installed skills directly. Claude.app / Claude Desktop cannot. To use Dify search from Claude.app, add the MCP server to your Claude desktop config.
+
+After running `./install.sh`, the MCP server is installed at:
+
+```text
+~/.dify-rag/mcp-server/server.mjs
+```
+
+On macOS, edit:
+
+```text
+~/Library/Application Support/Claude/claude_desktop_config.json
+```
+
+Add or merge this entry, replacing `/Users/you` with your actual home directory:
+
+```json
+{
+  "mcpServers": {
+    "dify-rag": {
+      "command": "node",
+      "args": ["/Users/you/.dify-rag/mcp-server/server.mjs"]
+    }
+  }
+}
+```
+
+Then restart Claude.app.
+
+The MCP server exposes:
+
+- `search_dify_knowledge`: search Dify and return retrieved chunks.
+- `list_dify_datasets`: list datasets visible to the configured Knowledge Base API key.
 
 ## Configuration
 
@@ -195,6 +235,8 @@ Or:
 ```
 
 Claude Code should use `dify-rag-search`, inspect the returned chunks, and answer from those chunks. If the chunks do not support an answer, Claude should say so instead of guessing.
+
+In Claude.app / Claude Desktop, ask the same thing after configuring the MCP server. Claude should use the `search_dify_knowledge` MCP tool instead of searching Google Drive directly.
 
 ## Manual Ingestion
 
@@ -290,6 +332,8 @@ This does not remove anything from Dify.
 | `DIFY_DATASET_API_KEY is not set` | Missing Knowledge Base API key | Set the Knowledge Base API key. |
 | `HTTP 401` | Invalid key or wrong key type | Check whether you are using the right key for Workflow or Knowledge Base API access. |
 | `No datasets matched` | Dataset filter too narrow or key lacks access | Check `DIFY_DATASET_IDS`, `--category`, and key permissions. |
+| Claude.app searches Google Drive instead of Dify | MCP server is not configured or Claude.app was not restarted | Check `claude_desktop_config.json`, restart Claude.app, and confirm the `dify-rag` MCP server is connected. |
+| MCP server fails to start | Node dependencies are missing | Rerun `./install.sh` after installing Node.js and npm. |
 | `Workflow not published` | Dify Workflow is not published | Publish the Workflow app in Dify. |
 | Connection error | Dify is unreachable | Confirm the URL, network, reverse proxy, and `/v1` API path. |
 | `pdftoppm` not found | Poppler is missing | Install Poppler with `brew install poppler` on macOS. |
@@ -302,6 +346,7 @@ Run basic checks before opening a pull request:
 ```bash
 bash -n install.sh
 python3 -m py_compile dify_inject.py dify_search.py
+node --check mcp-server/server.mjs
 ```
 
 Test the installer without touching your real home directory:
@@ -312,10 +357,18 @@ printf 'workflow-key\nknowledge-key\nhttp://localhost/v1\n' | HOME="$tmp_home" b
 cat "$tmp_home/.dify-rag/config"
 ```
 
+Test MCP server startup:
+
+```bash
+node ~/.dify-rag/mcp-server/server.mjs
+```
+
+It should stay running and log to stderr. Press `Ctrl-C` to stop it.
+
 Before publishing or releasing, scan for accidental private data:
 
 ```bash
-rg -n '192\.168|10\.|172\.(1[6-9]|2[0-9]|3[0-1])|DIFY_APP_KEY=.+|DIFY_DATASET_API_KEY=.+|customer|internal' .
+rg -n '192\.168\.[0-9]+\.[0-9]+|(^|[^0-9])10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]+\.[0-9]+|DIFY_APP_KEY=.+|DIFY_DATASET_API_KEY=.+|customer|internal' .
 git status --short
 ```
 
