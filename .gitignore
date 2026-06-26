@@ -5,6 +5,7 @@ config
 pages/
 *.pdf
 *_整形版.md
+*_search_results.*
 grp*.jpg
 page-*.jpg
 

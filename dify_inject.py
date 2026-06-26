@@ -31,8 +31,8 @@ import urllib.request
 import urllib.error
 
 DEFAULT_CONFIG_PATHS = [
-    os.path.expanduser("~/.claude/skills/dify-rag-inject/config"),
     os.path.expanduser("~/.dify-rag/config"),
+    os.path.expanduser("~/.claude/skills/dify-rag-inject/config"),
     "./config",
 ]
 

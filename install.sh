@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 #
-# dify-rag-skill インストーラ
+# dify-rag-skill installer
 #
 # 実行すると以下を行います:
-#   1. ~/.claude/skills/dify-rag-inject/ に SKILL.md と dify_inject.py を配置
+#   1. ~/.claude/skills/ に投入skillと検索skillを配置
 #   2. pdftoppm (poppler) の有無をチェック
-#   3. APIキーをその場で聞いて config に書き込む
+#   3. Dify設定を対話式に config へ書き込む
 #
 # 使い方:  ./install.sh
 #
 set -euo pipefail
 
-SKILL_DIR="$HOME/.claude/skills/dify-rag-inject"
+INJECT_SKILL_DIR="$HOME/.claude/skills/dify-rag-inject"
+SEARCH_SKILL_DIR="$HOME/.claude/skills/dify-rag-search"
+CONFIG_DIR="$HOME/.dify-rag"
+CONFIG_FILE="$CONFIG_DIR/config"
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 get_config_value() {
@@ -52,6 +55,15 @@ set_config_value() {
     mv "$tmp" "$file"
 }
 
+ensure_config_key() {
+    local key="$1"
+    local file="$2"
+
+    if ! grep -q "^${key}=" "$file"; then
+        printf '%s=\n' "$key" >> "$file"
+    fi
+}
+
 read_secret() {
     local __var_name="$1"
     local __value=""
@@ -68,45 +80,58 @@ read_secret() {
 
 echo ""
 echo "========================================"
-echo " dify-rag-skill インストール"
+echo " dify-rag-skill install"
 echo "========================================"
 echo ""
 
 # 1. skills フォルダへ配置
-mkdir -p "$SKILL_DIR"
-cp "$SRC_DIR/SKILL.md"        "$SKILL_DIR/SKILL.md"
-cp "$SRC_DIR/dify_inject.py"  "$SKILL_DIR/dify_inject.py"
-chmod +x "$SKILL_DIR/dify_inject.py"
-echo "[1/3] ファイルを配置しました: $SKILL_DIR"
+mkdir -p "$INJECT_SKILL_DIR" "$SEARCH_SKILL_DIR" "$CONFIG_DIR"
+cp "$SRC_DIR/SKILL.md" "$INJECT_SKILL_DIR/SKILL.md"
+cp "$SRC_DIR/dify_inject.py" "$INJECT_SKILL_DIR/dify_inject.py"
+cp "$SRC_DIR/search/SKILL.md" "$SEARCH_SKILL_DIR/SKILL.md"
+cp "$SRC_DIR/dify_search.py" "$SEARCH_SKILL_DIR/dify_search.py"
+chmod +x "$INJECT_SKILL_DIR/dify_inject.py" "$SEARCH_SKILL_DIR/dify_search.py"
+echo "[1/3] Installed ingest skill: $INJECT_SKILL_DIR"
+echo "      Installed search skill: $SEARCH_SKILL_DIR"
 
 # 2. poppler (pdftoppm) チェック
 if command -v pdftoppm >/dev/null 2>&1; then
     echo "[2/3] poppler: OK ($(command -v pdftoppm))"
 else
-    echo "[2/3] poppler: 見つかりません。画像主体PDFの処理に必要です。"
+    echo "[2/3] poppler: not found. It is needed for image-heavy PDF ingestion."
     if command -v brew >/dev/null 2>&1; then
-        echo "      あとで次を実行してください:  brew install poppler"
+        echo "      Run later:  brew install poppler"
     else
-        echo "      Homebrew導入後に次を実行してください:  brew install poppler"
+        echo "      Install Homebrew, then run:  brew install poppler"
     fi
 fi
 
 # 3. config 生成と対話式設定
-if [ -f "$SKILL_DIR/config" ]; then
-    echo "[3/3] config: 既存のものを使用します ($SKILL_DIR/config)"
+if [ -f "$CONFIG_FILE" ]; then
+    echo "[3/3] config: using existing file ($CONFIG_FILE)"
+elif [ -f "$INJECT_SKILL_DIR/config" ] && [ ! -L "$INJECT_SKILL_DIR/config" ]; then
+    cp "$INJECT_SKILL_DIR/config" "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
+    echo "[3/3] config: migrated existing ingest config to $CONFIG_FILE"
 else
-    cp "$SRC_DIR/config.example" "$SKILL_DIR/config"
-    chmod 600 "$SKILL_DIR/config"
-    echo "[3/3] config: 雛形を作成しました ($SKILL_DIR/config)"
+    cp "$SRC_DIR/config.example" "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
+    echo "[3/3] config: created template ($CONFIG_FILE)"
 fi
 
-CURRENT_KEY="$(get_config_value "DIFY_APP_KEY" "$SKILL_DIR/config")"
+ensure_config_key "DIFY_BASE_URL" "$CONFIG_FILE"
+ensure_config_key "DIFY_APP_KEY" "$CONFIG_FILE"
+ensure_config_key "DIFY_DATASET_API_KEY" "$CONFIG_FILE"
+ensure_config_key "DIFY_DATASET_IDS" "$CONFIG_FILE"
+chmod 600 "$CONFIG_FILE"
+
+CURRENT_KEY="$(get_config_value "DIFY_APP_KEY" "$CONFIG_FILE")"
 SHOULD_ASK_KEY=1
 
 if [ -n "$CURRENT_KEY" ]; then
     echo ""
-    echo "DifyのAPIキーはすでに設定されています。"
-    printf "入れ直しますか？ [y/N]: "
+    echo "Dify Workflow API key for ingestion is already set."
+    printf "Replace it? [y/N]: "
     ANSWER=""
     read -r ANSWER || true
     case "$ANSWER" in
@@ -117,46 +142,85 @@ fi
 
 if [ "$SHOULD_ASK_KEY" -eq 1 ]; then
     echo ""
-    echo "DifyのワークフローAPIキーを貼り付けて Enter を押してください。"
-    echo "未入力のまま Enter すると、キーは未設定のまま残ります。"
-    printf "APIキー: "
+    echo "Paste your Dify Workflow API key for ingestion and press Enter."
+    echo "Leave empty to keep it unset."
+    printf "Workflow API key: "
     read_secret APP_KEY
 
     if [ -z "$APP_KEY" ]; then
         echo ""
-        echo "APIキーは未設定のままです。あとでもう一度 ./install.sh を実行すれば設定できます。"
+        echo "Workflow API key left unset. Rerun ./install.sh when ready."
     else
         case "$APP_KEY" in
             app-*) ;;
             *)
-                echo "注意: DifyのワークフローAPIキーは通常 app- で始まります。このまま設定します。"
+                echo "Note: Dify Workflow API keys often start with app-. Saving this value as entered."
                 ;;
         esac
-        set_config_value "DIFY_APP_KEY" "$APP_KEY" "$SKILL_DIR/config"
-        chmod 600 "$SKILL_DIR/config"
-        echo "APIキーを設定しました。"
+        set_config_value "DIFY_APP_KEY" "$APP_KEY" "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"
+        echo "Workflow API key saved."
     fi
 else
-    echo "APIキーは既存の設定を保持しました。"
+    echo "Keeping existing Workflow API key."
 fi
 
-CURRENT_BASE="$(get_config_value "DIFY_BASE_URL" "$SKILL_DIR/config")"
+CURRENT_DATASET_KEY="$(get_config_value "DIFY_DATASET_API_KEY" "$CONFIG_FILE")"
+SHOULD_ASK_DATASET_KEY=1
+
+if [ -n "$CURRENT_DATASET_KEY" ]; then
+    echo ""
+    echo "Dify Knowledge Base API key for search is already set."
+    printf "Replace it? [y/N]: "
+    ANSWER=""
+    read -r ANSWER || true
+    case "$ANSWER" in
+        y|Y) SHOULD_ASK_DATASET_KEY=1 ;;
+        *) SHOULD_ASK_DATASET_KEY=0 ;;
+    esac
+fi
+
+if [ "$SHOULD_ASK_DATASET_KEY" -eq 1 ]; then
+    echo ""
+    echo "Paste your Dify Knowledge Base API key for search and press Enter."
+    echo "Leave empty to keep it unset."
+    printf "Knowledge Base API key: "
+    read_secret DATASET_API_KEY
+
+    if [ -z "$DATASET_API_KEY" ]; then
+        echo "Knowledge Base API key left unset. Rerun ./install.sh when ready."
+    else
+        set_config_value "DIFY_DATASET_API_KEY" "$DATASET_API_KEY" "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"
+        echo "Knowledge Base API key saved."
+    fi
+else
+    echo "Keeping existing Knowledge Base API key."
+fi
+
+CURRENT_BASE="$(get_config_value "DIFY_BASE_URL" "$CONFIG_FILE")"
 if [ -z "$CURRENT_BASE" ]; then
     echo ""
-    echo "DifyのAPIベースURLが未設定です。"
-    echo "分かる場合は入力してください。未入力ならあとで再実行して設定できます。"
-    printf "Dify APIベースURL: "
+    echo "Dify API base URL is not set."
+    echo "Example: https://your-dify.example.com/v1"
+    printf "Dify API base URL: "
     BASE_URL=""
     read -r BASE_URL || true
     if [ -n "$BASE_URL" ]; then
-        set_config_value "DIFY_BASE_URL" "$BASE_URL" "$SKILL_DIR/config"
-        chmod 600 "$SKILL_DIR/config"
-        echo "DifyのAPIベースURLを設定しました。"
+        set_config_value "DIFY_BASE_URL" "$BASE_URL" "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"
+        echo "Base URL saved."
     else
-        echo "DifyのAPIベースURLは未設定のままです。"
+        echo "Base URL left unset. Rerun ./install.sh when ready."
     fi
 fi
 
+# Compatibility for older installed scripts that look inside each skill dir.
+ln -sf "$CONFIG_FILE" "$INJECT_SKILL_DIR/config"
+ln -sf "$CONFIG_FILE" "$SEARCH_SKILL_DIR/config"
+
 echo ""
-echo "完了しました。"
-echo "Claude Code で「Driveの資料をDifyに投入して」と依頼すると発火します。"
+echo "Done."
+echo "Installed:"
+echo "  - dify-rag-inject: add Drive documents to Dify"
+echo "  - dify-rag-search: retrieve Dify chunks for Claude to answer from"
