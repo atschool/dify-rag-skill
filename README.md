@@ -37,14 +37,13 @@ cd dify-rag-skill
 - `~/.claude/skills/dify-rag-inject/` に skill 一式を配置
 - `pdftoppm` の有無をチェック
 - `config` を生成
+- Dify のワークフローAPIキーを対話式で設定
 
-最後に、生成された `~/.claude/skills/dify-rag-inject/config` を開き、
-**Dify のベースURLとAPIキーを記入**する:
+実行中にAPIキーを聞かれたら、Difyで発行したワークフローAPIキーを貼り付けて Enter を押す。
+設定ファイルを自分で開く必要はない。
 
-```bash
-DIFY_BASE_URL=<Dify の API ベースURL>
-DIFY_APP_KEY=<Dify のワークフローAPIキー>
-```
+Dify のAPIベースURLが未設定の場合も、同じインストール処理の中で入力できる。
+分からない場合は空のまま進めて、あとで `./install.sh` を再実行すれば設定できる。
 
 ## 使い方
 
