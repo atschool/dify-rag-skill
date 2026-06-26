@@ -1,0 +1,8 @@
+# このファイルを「config」という名前でコピーして、自分の値を入れてください。
+#   cp config.example config
+#
+# DIFY_BASE_URL と DIFY_APP_KEY は利用するDify環境の値を入れてください。
+# このファイル自体には実在のURLやキーを書かないでください。
+
+DIFY_BASE_URL=
+DIFY_APP_KEY=

@@ -1,0 +1,14 @@
+# APIキーを含む設定ファイルはコミットしない
+config
+
+# 作業中の中間ファイル
+pages/
+*.pdf
+*_整形版.md
+grp*.jpg
+page-*.jpg
+
+# OS / エディタ
+.DS_Store
+__pycache__/
+*.pyc
