@@ -15,6 +15,7 @@ INJECT_SKILL_DIR="$HOME/.claude/skills/dify-rag-inject"
 SEARCH_SKILL_DIR="$HOME/.claude/skills/dify-rag-search"
 CONFIG_DIR="$HOME/.dify-rag"
 CONFIG_FILE="$CONFIG_DIR/config"
+MCP_SERVER_DIR="$CONFIG_DIR/mcp-server"
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 get_config_value() {
@@ -85,14 +86,20 @@ echo "========================================"
 echo ""
 
 # 1. skills フォルダへ配置
-mkdir -p "$INJECT_SKILL_DIR" "$SEARCH_SKILL_DIR" "$CONFIG_DIR"
+mkdir -p "$INJECT_SKILL_DIR" "$SEARCH_SKILL_DIR" "$CONFIG_DIR" "$MCP_SERVER_DIR"
 cp "$SRC_DIR/SKILL.md" "$INJECT_SKILL_DIR/SKILL.md"
 cp "$SRC_DIR/dify_inject.py" "$INJECT_SKILL_DIR/dify_inject.py"
 cp "$SRC_DIR/search/SKILL.md" "$SEARCH_SKILL_DIR/SKILL.md"
 cp "$SRC_DIR/dify_search.py" "$SEARCH_SKILL_DIR/dify_search.py"
+cp "$SRC_DIR/dify_search.py" "$MCP_SERVER_DIR/dify_search.py"
+cp "$SRC_DIR/mcp-server/server.mjs" "$MCP_SERVER_DIR/server.mjs"
+cp "$SRC_DIR/mcp-server/package.json" "$MCP_SERVER_DIR/package.json"
+cp "$SRC_DIR/mcp-server/package-lock.json" "$MCP_SERVER_DIR/package-lock.json"
 chmod +x "$INJECT_SKILL_DIR/dify_inject.py" "$SEARCH_SKILL_DIR/dify_search.py"
+chmod +x "$MCP_SERVER_DIR/server.mjs" "$MCP_SERVER_DIR/dify_search.py"
 echo "[1/3] Installed ingest skill: $INJECT_SKILL_DIR"
 echo "      Installed search skill: $SEARCH_SKILL_DIR"
+echo "      Installed MCP server: $MCP_SERVER_DIR"
 
 # 2. poppler (pdftoppm) チェック
 if command -v pdftoppm >/dev/null 2>&1; then
@@ -104,6 +111,19 @@ else
     else
         echo "      Install Homebrew, then run:  brew install poppler"
     fi
+fi
+
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    echo "      node: OK ($(command -v node))"
+    echo "      npm: OK ($(command -v npm))"
+    (
+        cd "$MCP_SERVER_DIR"
+        npm install --omit=dev --silent
+    )
+    echo "      MCP server dependencies: OK"
+else
+    echo "      node/npm: not found. MCP server dependencies were not installed."
+    echo "      Install Node.js, then run ./install.sh again to enable Claude.app MCP use."
 fi
 
 # 3. config 生成と対話式設定
@@ -224,3 +244,7 @@ echo "Done."
 echo "Installed:"
 echo "  - dify-rag-inject: add Drive documents to Dify"
 echo "  - dify-rag-search: retrieve Dify chunks for Claude to answer from"
+echo "  - dify-rag MCP server: expose Dify search to Claude.app"
+echo ""
+echo "Claude.app MCP server command:"
+echo "  node $MCP_SERVER_DIR/server.mjs"
