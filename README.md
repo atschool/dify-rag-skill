@@ -1,75 +1,234 @@
 # dify-rag-skill
 
-Google Drive 上の資料を Dify のナレッジベースに RAG 化して投入する Claude Code skill。
-画像主体の PDF スライドも、Claude Code が中身を読み取って整形したうえで投入する。
+Claude Code skill for turning Google Drive documents into clean Markdown and sending them to a Dify Workflow for RAG knowledge ingestion.
 
-## これは何をするものか
+This repository is designed for teams that want Claude Code to help with the messy part of RAG preparation: finding a Drive document, reading image-heavy PDFs, rewriting the content into retrieval-friendly Markdown, and sending the result to Dify.
 
-Claude Code に「Drive の〇〇を Dify に入れて」と依頼すると、
+This is an independent helper project. It is not an official Dify, Anthropic, or Google product.
 
-1. Google Drive から対象資料を取得
-2. 画像主体 PDF なら画像化して Claude Code 自身が内容を読み取り
-3. RAG 検索に強い Markdown に整形
-4. Dify の投入ワークフロー API を叩いてナレッジベースに登録（器の自動作成・UPSERT 込み）
+## What It Does
 
-までを一貫して行う。
+When you ask Claude Code to add a Drive document to Dify, this skill guides Claude Code through the workflow:
 
-## 前提
+1. Find the target file in Google Drive.
+2. Detect whether the file has a text layer.
+3. Convert image-heavy PDFs into page images when needed.
+4. Read and structure the content as Markdown.
+5. Send `category`, `doc_name`, and `doc_text` to a Dify Workflow API.
+6. Let the Dify Workflow create or update the appropriate knowledge document.
 
-- **Claude Code** が使えること
-- **Google Drive MCP** が Claude Code に接続済みであること
-- **Dify** で「ナレッジ投入パイプライン」ワークフローが公開済みであること
-- ワークフロー用 **API キー** を発行済みであること
-- **poppler**（`pdftoppm`）が入っていること（未導入なら `brew install poppler`）
+The repository includes:
 
-### APIキーの発行方法
-Dify で対象ワークフローアプリを開き、「APIアクセス」からAPIキーを作成してコピーしておく。
+- `SKILL.md`: the Claude Code skill instructions.
+- `dify_inject.py`: a small Python client for calling Dify `/workflows/run`.
+- `install.sh`: an interactive installer for local Claude Code skill setup.
+- `config.example`: a safe config template with no real URL or API key.
 
-## インストール
+## Requirements
+
+- macOS or Linux shell environment.
+- Claude Code with Google Drive MCP or an equivalent Drive connector configured.
+- A Dify Workflow app published with API access enabled.
+- A Dify Workflow API key.
+- Python 3.
+- `pdftoppm` from Poppler for image-heavy PDFs.
+
+On macOS, install Poppler with:
 
 ```bash
-git clone <このリポジトリのURL>
+brew install poppler
+```
+
+## Dify Workflow Contract
+
+This skill does not create the Dify Workflow for you. You need a published Dify Workflow app that accepts these inputs:
+
+| Input | Type | Description |
+|---|---|---|
+| `category` | string | Knowledge base, collection, or routing category. |
+| `doc_name` | string | Document name to create or update. |
+| `doc_text` | string | Retrieval-ready Markdown body. |
+
+The included client sends this payload to:
+
+```text
+<DIFY_BASE_URL>/workflows/run
+```
+
+with:
+
+```json
+{
+  "inputs": {
+    "category": "...",
+    "doc_name": "...",
+    "doc_text": "..."
+  },
+  "response_mode": "blocking",
+  "user": "dify-rag-skill"
+}
+```
+
+How the Dify Workflow creates datasets, documents, chunks, or upserts is up to your Dify implementation.
+
+## Install
+
+Clone the repository and run the installer:
+
+```bash
+git clone https://github.com/atschool/dify-rag-skill.git
 cd dify-rag-skill
 ./install.sh
 ```
 
-`install.sh` が次を行う:
-- `~/.claude/skills/dify-rag-inject/` に skill 一式を配置
-- `pdftoppm` の有無をチェック
-- `config` を生成
+The installer will:
 
-最後に、生成された `~/.claude/skills/dify-rag-inject/config` を開き、
-**Dify のベースURLとAPIキーを記入**する:
+- Copy `SKILL.md` and `dify_inject.py` to `~/.claude/skills/dify-rag-inject/`.
+- Check whether `pdftoppm` is available.
+- Create `~/.claude/skills/dify-rag-inject/config` if it does not exist.
+- Ask for your Dify Workflow API key.
+- Ask for your Dify API base URL if it is not already configured.
+
+The config file is local to your machine and is intentionally ignored by Git.
+
+## Configuration
+
+The installer creates:
+
+```text
+~/.claude/skills/dify-rag-inject/config
+```
+
+The file uses simple `KEY=VALUE` lines:
 
 ```bash
-DIFY_BASE_URL=<Dify の API ベースURL>
-DIFY_APP_KEY=<Dify のワークフローAPIキー>
+DIFY_BASE_URL=
+DIFY_APP_KEY=
 ```
 
-## 使い方
+Use the Dify API base URL for `DIFY_BASE_URL`. Common examples look like:
 
-Claude Code を起動し、自然文で依頼する:
-
+```bash
+DIFY_BASE_URL=https://your-dify.example.com/v1
+DIFY_BASE_URL=http://localhost/v1
 ```
-Drive の <資料名> を、category「<カテゴリ名>」で Dify に入れて
+
+Use a Workflow API key for `DIFY_APP_KEY`.
+
+You can also provide settings through environment variables:
+
+```bash
+export DIFY_BASE_URL="https://your-dify.example.com/v1"
+export DIFY_APP_KEY="your-workflow-api-key"
 ```
 
-Claude Code が SKILL.md の手順に沿って取得・整形・投入まで行う。
+Environment variables take precedence over the config file.
 
-## 手動投入（スクリプト直接実行）
+## Usage From Claude Code
 
-整形済み Markdown が手元にあるなら、スクリプトを直接叩いてもよい:
+After installation, ask Claude Code something like:
+
+```text
+Find the product overview PDF in Drive and add it to Dify under category "product-docs".
+```
+
+Claude Code should use the skill when the task involves:
+
+- Adding Drive documents to Dify.
+- Preparing image-heavy PDFs for RAG.
+- Turning slide decks or scanned PDFs into structured Markdown.
+- Sending retrieval-ready Markdown to the configured Dify Workflow.
+
+## Manual Upload
+
+If you already have a Markdown file, you can call the Python client directly:
 
 ```bash
 python3 ~/.claude/skills/dify-rag-inject/dify_inject.py \
-    --category '<カテゴリ名>' \
-    --doc-name '<資料名>' \
-    --file './<資料名>_整形版.md'
+  --category "product-docs" \
+  --doc-name "product-overview" \
+  --file "./product-overview.md"
 ```
 
-`--dry-run` を付けると送信せず内容だけ確認できる。
+Preview without sending:
 
-## 注意
+```bash
+python3 ~/.claude/skills/dify-rag-inject/dify_inject.py \
+  --category "product-docs" \
+  --doc-name "product-overview" \
+  --file "./product-overview.md" \
+  --dry-run
+```
 
-- `config`（APIキー入り）は **git にコミットしない**（`.gitignore` 済み）。
-- 同じ category・doc_name で再投入すると上書き更新（UPSERT）になる。重複ドキュメントは作られない。
+Use a custom config path:
+
+```bash
+python3 ~/.claude/skills/dify-rag-inject/dify_inject.py \
+  --config "./config" \
+  --category "product-docs" \
+  --doc-name "product-overview" \
+  --file "./product-overview.md"
+```
+
+## Uninstall
+
+Remove the installed skill and local config:
+
+```bash
+rm -rf ~/.claude/skills/dify-rag-inject
+```
+
+This does not remove anything from Dify.
+
+## Security Notes
+
+- Never commit `config`; it may contain API keys.
+- `config.example` must stay free of real URLs, keys, customer names, or internal examples.
+- The installer sets the local config file to mode `600` when it creates or updates it.
+- Review generated Markdown before uploading if the source document contains sensitive data.
+- For public forks, keep examples generic and avoid real company, customer, dataset, or network details.
+- The Python client sends document text to the Dify endpoint you configure. Make sure that endpoint is allowed to receive the source content.
+
+## Troubleshooting
+
+| Symptom | Likely Cause | What To Check |
+|---|---|---|
+| `ERROR: Dify のベースURLが未設定です` | Missing base URL | Set `DIFY_BASE_URL` in config or environment variables. |
+| `ERROR: APIキーが未設定です` | Missing Workflow API key | Set `DIFY_APP_KEY` in config or environment variables. |
+| `HTTP 401` | Invalid API key | Recreate the Workflow API key in Dify and rerun `./install.sh`. |
+| `Workflow not published` | Dify Workflow is not published | Publish the Workflow app in Dify. |
+| Connection error | Dify is unreachable | Confirm the URL, network, reverse proxy, and `/v1` API path. |
+| `pdftoppm` not found | Poppler is missing | Install Poppler with `brew install poppler` on macOS. |
+| Image text is hard to read | PDF render resolution is too low | Increase the `pdftoppm` DPI in the skill workflow. |
+
+## Development
+
+Run basic checks before opening a pull request:
+
+```bash
+bash -n install.sh
+python3 -m py_compile dify_inject.py
+```
+
+Test the installer without touching your real home directory:
+
+```bash
+tmp_home=$(mktemp -d)
+printf 'test-key\nhttp://localhost/v1\n' | HOME="$tmp_home" bash install.sh
+cat "$tmp_home/.claude/skills/dify-rag-inject/config"
+```
+
+Before publishing or releasing, scan for accidental private data:
+
+```bash
+rg -n '192\.168|10\.|172\.(1[6-9]|2[0-9]|3[0-1])|DIFY_APP_KEY=.+|customer|internal' .
+git status --short
+```
+
+## Repository Status
+
+This project is a lightweight integration helper. It assumes you already operate Dify and can design the ingestion Workflow appropriate for your organization.
+
+## License
+
+MIT. See [LICENSE](./LICENSE).
