@@ -46,8 +46,28 @@ function findSearchScript() {
   );
 }
 
-function runSearchScript(args) {
-  const script = findSearchScript();
+function findInjectScript() {
+  const candidates = [
+    process.env.DIFY_RAG_INJECT_SCRIPT,
+    path.join(__dirname, "dify_inject.py"),
+    path.join(__dirname, "..", "dify_inject.py"),
+    path.join(os.homedir(), ".claude", "skills", "dify-rag-inject", "dify_inject.py"),
+  ]
+    .filter(Boolean)
+    .map(expandHome);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    "dify_inject.py was not found. Run ./install.sh again or set DIFY_RAG_INJECT_SCRIPT."
+  );
+}
+
+function runPythonScript(label, script, args) {
   const python = process.env.PYTHON || process.env.PYTHON_BIN || "python3";
 
   return new Promise((resolve, reject) => {
@@ -74,7 +94,7 @@ function runSearchScript(args) {
         return;
       }
       const message = [
-        `dify_search.py exited with code ${code}.`,
+        `${label} exited with code ${code}.`,
         stderr.trim(),
         stdout.trim(),
       ]
@@ -83,6 +103,14 @@ function runSearchScript(args) {
       reject(new Error(message));
     });
   });
+}
+
+function runSearchScript(args) {
+  return runPythonScript("dify_search.py", findSearchScript(), args);
+}
+
+function runInjectScript(args) {
+  return runPythonScript("dify_inject.py", findInjectScript(), args);
 }
 
 function pushOptional(args, flag, value) {
@@ -137,6 +165,67 @@ server.registerTool(
 );
 
 server.registerTool(
+  "inject_dify_knowledge",
+  {
+    title: "Inject Dify Knowledge",
+    description:
+      "Add or update a prepared Markdown document in Dify through the configured ingestion Workflow. Use only when the user explicitly asks to add material to Dify or the RAG knowledge base.",
+    inputSchema: {
+      category: z
+        .string()
+        .min(1)
+        .describe("Knowledge category or dataset routing name"),
+      doc_name: z.string().min(1).describe("Document name to create or update"),
+      markdown: z
+        .string()
+        .min(1)
+        .describe("Retrieval-ready Markdown content extracted from the source material"),
+      user: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Optional Dify workflow user identifier"),
+      dry_run: z
+        .boolean()
+        .optional()
+        .describe("Preview the ingestion request without sending it to Dify"),
+    },
+  },
+  async ({ category, doc_name, markdown, user, dry_run }) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dify-rag-inject-"));
+    const tmpFile = path.join(tmpDir, "document.md");
+
+    try {
+      fs.writeFileSync(tmpFile, markdown, "utf8");
+      const args = [
+        "--category",
+        category,
+        "--doc-name",
+        doc_name,
+        "--file",
+        tmpFile,
+      ];
+      pushOptional(args, "--user", user);
+      if (dry_run) {
+        args.push("--dry-run");
+      }
+
+      const output = await runInjectScript(args);
+      return {
+        content: [
+          {
+            type: "text",
+            text: output || "No output returned from Dify ingestion.",
+          },
+        ],
+      };
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+);
+
+server.registerTool(
   "list_dify_datasets",
   {
     title: "List Dify Datasets",
@@ -167,4 +256,3 @@ main().catch((error) => {
   console.error("MCP server error:", error);
   process.exit(1);
 });
-

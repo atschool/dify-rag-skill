@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "MCP server that exposes Dify RAG search to Claude apps.",
+  "description": "MCP server that exposes Dify RAG search and ingestion to Claude apps.",
   "bin": {
     "dify-rag-mcp": "./server.mjs"
   },
@@ -15,4 +15,3 @@
     "node": ">=20"
   }
 }
-
