@@ -6,7 +6,7 @@ This repository contains two companion skills:
 
 - `dify-rag-inject`: prepare Google Drive documents as retrieval-friendly Markdown and send them to a Dify ingestion Workflow.
 - `dify-rag-search`: search Dify knowledge bases and return retrieved chunks so Claude can write the final answer.
-- `dify-rag` MCP server: expose Dify search to Claude.app / Claude Desktop.
+- `dify-rag` MCP server: expose Dify search and ingestion to Claude.app / Claude Desktop.
 
 The design keeps responsibilities separate:
 
@@ -28,6 +28,13 @@ When you ask Claude Code to add a Drive document to Dify, the ingestion skill gu
 4. Read and structure the content as Markdown.
 5. Send `category`, `doc_name`, and `doc_text` to a Dify Workflow API.
 6. Let your Dify Workflow create or update the appropriate knowledge document.
+
+Claude.app / Claude Desktop can do the same ingestion flow through the MCP server:
+
+1. Use its Drive connector to read the source document.
+2. Convert the content into retrieval-friendly Markdown.
+3. Call `inject_dify_knowledge` with `category`, `doc_name`, and `markdown`.
+4. Let the local MCP server call the configured Dify ingestion Workflow.
 
 ### Search
 
@@ -168,6 +175,7 @@ The MCP server exposes:
 
 - `search_dify_knowledge`: search Dify and return retrieved chunks.
 - `list_dify_datasets`: list datasets visible to the configured Knowledge Base API key.
+- `inject_dify_knowledge`: add or update a prepared Markdown document through the configured Dify ingestion Workflow.
 
 ## Configuration
 
@@ -237,6 +245,16 @@ Or:
 Claude Code should use `dify-rag-search`, inspect the returned chunks, and answer from those chunks. If the chunks do not support an answer, Claude should say so instead of guessing.
 
 In Claude.app / Claude Desktop, ask the same thing after configuring the MCP server. Claude should use the `search_dify_knowledge` MCP tool instead of searching Google Drive directly.
+
+### Add Documents From Claude.app / Claude Desktop
+
+Ask Claude.app something like:
+
+```text
+Find the event sponsorship PDF in Google Drive, convert it to RAG-friendly Markdown, and add it to Dify under category "events".
+```
+
+Claude.app should read the source document with its Drive connector, prepare Markdown, and then call `inject_dify_knowledge`. The MCP server reads `DIFY_APP_KEY` from your local config; the key is not committed to Git.
 
 ## Manual Ingestion
 
