@@ -263,6 +263,15 @@ node ~/.dify-rag/gateway/server.mjs
 
 The gateway listens on `127.0.0.1:8787` by default. Put Cloudflare Tunnel in front of that local service. Do not route a public hostname directly to Dify itself.
 
+For an always-on Mac host, install the gateway as a launchd service:
+
+```bash
+./scripts/install-gateway-launchd.sh
+./scripts/doctor-gateway.sh
+```
+
+The doctor command checks local Dify, the gateway health endpoint, the launchd service, and whether `cloudflared` is running.
+
 For employee machines, install the same repository and enter only the hosted gateway URL when prompted:
 
 ```bash
