@@ -153,6 +153,8 @@ ensure_config_key "DIFY_DATASET_API_KEY" "$CONFIG_FILE"
 ensure_config_key "DIFY_DATASET_IDS" "$CONFIG_FILE"
 ensure_config_key "DIFY_RAG_GATEWAY_URL" "$CONFIG_FILE"
 ensure_config_key "DIFY_RAG_SHARED_SECRET" "$CONFIG_FILE"
+ensure_config_key "DIFY_RAG_CLOUDFLARE_ACCESS" "$CONFIG_FILE"
+ensure_config_key "DIFY_RAG_CLOUDFLARED_BIN" "$CONFIG_FILE"
 chmod 600 "$CONFIG_FILE"
 
 CURRENT_GATEWAY_URL="$(get_config_value "DIFY_RAG_GATEWAY_URL" "$CONFIG_FILE")"
@@ -178,6 +180,20 @@ fi
 if [ -n "$CURRENT_GATEWAY_URL" ]; then
     ln -sf "$CONFIG_FILE" "$INJECT_SKILL_DIR/config"
     ln -sf "$CONFIG_FILE" "$SEARCH_SKILL_DIR/config"
+
+    if ! command -v cloudflared >/dev/null 2>&1; then
+        echo ""
+        echo "Cloudflare Access note:"
+        echo "  If this gateway is protected by Cloudflare Access, install cloudflared:"
+        echo "    brew install cloudflared"
+        echo "  Then authenticate once:"
+        echo "    cloudflared access login $CURRENT_GATEWAY_URL"
+    else
+        echo ""
+        echo "Cloudflare Access note:"
+        echo "  If this gateway is protected by Cloudflare Access, authenticate once:"
+        echo "    cloudflared access login $CURRENT_GATEWAY_URL"
+    fi
 
     echo ""
     echo "Done."

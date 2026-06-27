@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -59,12 +59,88 @@ function gatewayUrl() {
   return configValue("DIFY_RAG_GATEWAY_URL").replace(/\/+$/, "");
 }
 
-async function requestGateway(method, pathname, payload) {
-  const base = gatewayUrl();
-  if (!base) {
-    throw new Error("DIFY_RAG_GATEWAY_URL is not set.");
+function cloudflareAccessMode() {
+  return configValue("DIFY_RAG_CLOUDFLARE_ACCESS", "auto").toLowerCase();
+}
+
+function cloudflareAccessEnabled() {
+  return !["0", "false", "no", "off", "none", "disabled"].includes(cloudflareAccessMode());
+}
+
+function decodeJwtExpiry(token) {
+  const parts = token.split(".");
+  if (parts.length < 2) return 0;
+
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    return Number(payload.exp || 0);
+  } catch {
+    return 0;
+  }
+}
+
+let cachedCloudflareAccessToken = {
+  appUrl: "",
+  token: "",
+  expiresAt: 0,
+};
+
+function getCloudflareAccessToken(appUrl) {
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    cachedCloudflareAccessToken.appUrl === appUrl &&
+    cachedCloudflareAccessToken.token &&
+    cachedCloudflareAccessToken.expiresAt > now + 60
+  ) {
+    return cachedCloudflareAccessToken.token;
   }
 
+  const cloudflared = configValue("DIFY_RAG_CLOUDFLARED_BIN", "cloudflared");
+  const result = spawnSync(cloudflared, ["access", "token", `-app=${appUrl}`], {
+    encoding: "utf8",
+    timeout: 120000,
+  });
+
+  if (result.error) {
+    if (result.error.code === "ENOENT") {
+      throw new Error(
+        [
+          "Cloudflare Access protects the configured gateway, but cloudflared was not found.",
+          "Install it with `brew install cloudflared`, then run:",
+          `cloudflared access login ${appUrl}`,
+        ].join("\n")
+      );
+    }
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    const detail = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
+    throw new Error(
+      [
+        "Could not get a Cloudflare Access token for the configured gateway.",
+        `Run this once, then retry Claude.app: cloudflared access login ${appUrl}`,
+        detail,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+  }
+
+  const token = result.stdout.trim();
+  if (!token) {
+    throw new Error(`cloudflared returned an empty Access token. Run: cloudflared access login ${appUrl}`);
+  }
+
+  cachedCloudflareAccessToken = {
+    appUrl,
+    token,
+    expiresAt: decodeJwtExpiry(token),
+  };
+  return token;
+}
+
+function buildGatewayHeaders(base, includeCloudflareAccessToken) {
   const headers = {
     "Content-Type": "application/json",
   };
@@ -72,17 +148,51 @@ async function requestGateway(method, pathname, payload) {
   if (sharedSecret) {
     headers.Authorization = `Bearer ${sharedSecret}`;
   }
+  if (includeCloudflareAccessToken && cloudflareAccessEnabled()) {
+    headers["cf-access-token"] = getCloudflareAccessToken(base);
+  }
+  return headers;
+}
 
-  const response = await fetch(`${base}${pathname}`, {
+async function fetchGateway(base, method, pathname, payload, includeCloudflareAccessToken) {
+  return fetch(`${base}${pathname}`, {
     method,
-    headers,
+    headers: buildGatewayHeaders(base, includeCloudflareAccessToken),
+    redirect: "manual",
     body: payload === undefined ? undefined : JSON.stringify(payload),
   });
+}
+
+async function requestGateway(method, pathname, payload) {
+  const base = gatewayUrl();
+  if (!base) {
+    throw new Error("DIFY_RAG_GATEWAY_URL is not set.");
+  }
+
+  let response = await fetchGateway(base, method, pathname, payload, cloudflareAccessMode() === "on");
+  const redirectLocation = response.headers.get("location") || "";
+  if (
+    response.status >= 300 &&
+    response.status < 400 &&
+    redirectLocation.includes("cloudflareaccess.com") &&
+    cloudflareAccessEnabled()
+  ) {
+    response = await fetchGateway(base, method, pathname, payload, true);
+  }
+
   const text = await response.text();
   let data = {};
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
+    if (response.status >= 300 && response.status < 400 && redirectLocation.includes("cloudflareaccess.com")) {
+      throw new Error(
+        [
+          `Gateway is protected by Cloudflare Access (${response.status}).`,
+          `Run this once, then retry Claude.app: cloudflared access login ${base}`,
+        ].join("\n")
+      );
+    }
     throw new Error(`Gateway returned non-JSON response (${response.status}):\n${text}`);
   }
 

@@ -200,6 +200,8 @@ DIFY_DATASET_API_KEY=
 DIFY_DATASET_IDS=
 DIFY_RAG_GATEWAY_URL=
 DIFY_RAG_SHARED_SECRET=
+DIFY_RAG_CLOUDFLARE_ACCESS=auto
+DIFY_RAG_CLOUDFLARED_BIN=cloudflared
 ```
 
 Use the Dify API base URL for `DIFY_BASE_URL`. Common examples look like:
@@ -216,6 +218,8 @@ Use:
 - `DIFY_DATASET_IDS` only when you want to restrict search to specific datasets.
 - `DIFY_RAG_GATEWAY_URL` for employee/team installs that should call a hosted gateway instead of Dify directly.
 - `DIFY_RAG_SHARED_SECRET` only when you deliberately protect the gateway with a shared bearer token. Prefer Cloudflare Access or another identity-aware proxy for team use.
+- `DIFY_RAG_CLOUDFLARE_ACCESS=auto` lets the MCP server automatically attach a user-scoped Cloudflare Access token when the gateway redirects to Access.
+- `DIFY_RAG_CLOUDFLARED_BIN` can point to a custom `cloudflared` binary path.
 
 Environment variables are also supported and take precedence over the config file:
 
@@ -225,6 +229,7 @@ export DIFY_APP_KEY="your-workflow-api-key"
 export DIFY_DATASET_API_KEY="your-knowledge-base-api-key"
 export DIFY_DATASET_IDS="dataset-id-1,dataset-id-2"
 export DIFY_RAG_GATEWAY_URL="https://your-gateway.example.com"
+export DIFY_RAG_CLOUDFLARE_ACCESS="auto"
 ```
 
 ## Team Gateway Mode
@@ -273,6 +278,15 @@ node ~/.dify-rag/mcp-server/server.mjs
 ```
 
 The employee MCP server will call `DIFY_RAG_GATEWAY_URL` and will not require `DIFY_BASE_URL`, `DIFY_APP_KEY`, or `DIFY_DATASET_API_KEY`.
+
+If the hosted gateway is protected by Cloudflare Access, each employee should install `cloudflared` and authenticate once:
+
+```bash
+brew install cloudflared
+cloudflared access login https://your-gateway.example.com
+```
+
+After login, the MCP server obtains a user-scoped Access token with `cloudflared access token -app=...` and sends it as the `cf-access-token` header. Employees do not receive Dify API keys.
 
 ## Usage From Claude Code
 
