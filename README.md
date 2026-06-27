@@ -7,12 +7,14 @@ This repository contains two companion skills:
 - `dify-rag-inject`: prepare Google Drive documents as retrieval-friendly Markdown and send them to a Dify ingestion Workflow.
 - `dify-rag-search`: search Dify knowledge bases and return retrieved chunks so Claude can write the final answer.
 - `dify-rag` MCP server: expose Dify search and ingestion to Claude.app / Claude Desktop.
+- `dify-rag-gateway`: optional HTTP gateway for teams, so employee machines do not need Dify API keys.
 
 The design keeps responsibilities separate:
 
 - Dify stores and retrieves knowledge.
 - Claude Code reads source documents, prepares Markdown, inspects retrieved chunks, and writes user-facing answers.
 - Dify is not asked to generate the final answer in the search flow.
+- In team mode, only the gateway host stores Dify API keys. Employee machines call the gateway.
 
 This is an independent helper project. It is not an official Dify, Anthropic, or Google product.
 
@@ -53,6 +55,7 @@ When you ask Claude Code to search the knowledge base, the search skill:
 - `dify_inject.py`: Python client for calling Dify `/workflows/run`.
 - `dify_search.py`: Python client for Dify dataset listing and retrieval.
 - `mcp-server/`: local MCP server for Claude.app / Claude Desktop.
+- `gateway/`: HTTP gateway for shared/team deployments.
 - `install.sh`: interactive installer for both skills.
 - `config.example`: safe config template with no real URL or API key.
 
@@ -65,6 +68,7 @@ When you ask Claude Code to search the knowledge base, the search skill:
 - A Dify Workflow API key for ingestion.
 - A Dify Knowledge Base API key for search.
 - Python 3.
+- Node.js 20 or later for Claude.app MCP use and gateway use.
 - `pdftoppm` from Poppler for image-heavy PDFs.
 
 On macOS, install Poppler with:
@@ -140,6 +144,8 @@ The installer will:
 
 The config file is local to your machine and is intentionally ignored by Git.
 
+For employee installs that should not store Dify API keys locally, enter a hosted gateway URL when the installer asks for it. In that mode, the installer skips the Dify API key prompts.
+
 ## Claude.app / Claude Desktop MCP Setup
 
 Claude Code can read the installed skills directly. Claude.app / Claude Desktop cannot. To use Dify search from Claude.app, add the MCP server to your Claude desktop config.
@@ -192,6 +198,8 @@ DIFY_BASE_URL=
 DIFY_APP_KEY=
 DIFY_DATASET_API_KEY=
 DIFY_DATASET_IDS=
+DIFY_RAG_GATEWAY_URL=
+DIFY_RAG_SHARED_SECRET=
 ```
 
 Use the Dify API base URL for `DIFY_BASE_URL`. Common examples look like:
@@ -206,6 +214,8 @@ Use:
 - `DIFY_APP_KEY` for the ingestion Workflow API key.
 - `DIFY_DATASET_API_KEY` for Knowledge Base search API access.
 - `DIFY_DATASET_IDS` only when you want to restrict search to specific datasets.
+- `DIFY_RAG_GATEWAY_URL` for employee/team installs that should call a hosted gateway instead of Dify directly.
+- `DIFY_RAG_SHARED_SECRET` only when you deliberately protect the gateway with a shared bearer token. Prefer Cloudflare Access or another identity-aware proxy for team use.
 
 Environment variables are also supported and take precedence over the config file:
 
@@ -214,7 +224,55 @@ export DIFY_BASE_URL="https://your-dify.example.com/v1"
 export DIFY_APP_KEY="your-workflow-api-key"
 export DIFY_DATASET_API_KEY="your-knowledge-base-api-key"
 export DIFY_DATASET_IDS="dataset-id-1,dataset-id-2"
+export DIFY_RAG_GATEWAY_URL="https://your-gateway.example.com"
 ```
+
+## Team Gateway Mode
+
+Use gateway mode when multiple employees need Claude.app access but you do not want to distribute Dify API keys.
+
+Recommended layout:
+
+```text
+Employee Claude.app
+  -> local dify-rag MCP server
+  -> https://your-gateway.example.com
+  -> Cloudflare Tunnel / Access
+  -> dify-rag-gateway on the Dify host
+  -> local Dify API
+```
+
+On the Dify host, install this repository normally and configure direct Dify settings:
+
+```bash
+git clone https://github.com/atschool/dify-rag-skill.git
+cd dify-rag-skill
+./install.sh
+```
+
+Then run the gateway:
+
+```bash
+node ~/.dify-rag/gateway/server.mjs
+```
+
+The gateway listens on `127.0.0.1:8787` by default. Put Cloudflare Tunnel in front of that local service. Do not route a public hostname directly to Dify itself.
+
+For employee machines, install the same repository and enter only the hosted gateway URL when prompted:
+
+```bash
+git clone https://github.com/atschool/dify-rag-skill.git
+cd dify-rag-skill
+./install.sh
+```
+
+After installation, configure Claude.app to run:
+
+```text
+node ~/.dify-rag/mcp-server/server.mjs
+```
+
+The employee MCP server will call `DIFY_RAG_GATEWAY_URL` and will not require `DIFY_BASE_URL`, `DIFY_APP_KEY`, or `DIFY_DATASET_API_KEY`.
 
 ## Usage From Claude Code
 
@@ -340,6 +398,8 @@ This does not remove anything from Dify.
 - The search client prints retrieved source chunks. Treat terminal output and logs accordingly.
 - Review generated Markdown before uploading if the source document contains sensitive data.
 - For public forks, keep examples generic and avoid real company, customer, dataset, or network details.
+- For team deployments, publish only the gateway. Do not expose the Dify web/API service directly to the Internet.
+- Protect the gateway with Cloudflare Access, a private network, or equivalent controls before running it against sensitive knowledge bases.
 
 ## Troubleshooting
 

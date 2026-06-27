@@ -8,3 +8,8 @@ DIFY_BASE_URL=
 DIFY_APP_KEY=
 DIFY_DATASET_API_KEY=
 DIFY_DATASET_IDS=
+
+# Employee installs can use a hosted gateway instead of local Dify API keys.
+# Leave empty on the Dify host itself.
+DIFY_RAG_GATEWAY_URL=
+DIFY_RAG_SHARED_SECRET=

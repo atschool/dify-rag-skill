@@ -1,0 +1,13 @@
+{
+  "name": "dify-rag-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "HTTP gateway for Dify RAG MCP clients.",
+  "bin": {
+    "dify-rag-gateway": "./server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -25,6 +25,73 @@ function expandHome(filePath) {
   return filePath;
 }
 
+const DEFAULT_CONFIG_PATHS = [
+  path.join(os.homedir(), ".dify-rag", "config"),
+  path.join(os.homedir(), ".claude", "skills", "dify-rag-search", "config"),
+  path.join(os.homedir(), ".claude", "skills", "dify-rag-inject", "config"),
+  path.join(process.cwd(), "config"),
+];
+
+function loadConfig() {
+  const config = {};
+  for (const filePath of DEFAULT_CONFIG_PATHS) {
+    if (!fs.existsSync(filePath)) continue;
+    const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith("#") || !line.includes("=")) continue;
+      const index = line.indexOf("=");
+      config[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+    }
+    config._loadedFrom = filePath;
+    break;
+  }
+  return config;
+}
+
+const config = loadConfig();
+
+function configValue(key, fallback = "") {
+  return process.env[key] || config[key] || fallback;
+}
+
+function gatewayUrl() {
+  return configValue("DIFY_RAG_GATEWAY_URL").replace(/\/+$/, "");
+}
+
+async function requestGateway(method, pathname, payload) {
+  const base = gatewayUrl();
+  if (!base) {
+    throw new Error("DIFY_RAG_GATEWAY_URL is not set.");
+  }
+
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  const sharedSecret = configValue("DIFY_RAG_SHARED_SECRET");
+  if (sharedSecret) {
+    headers.Authorization = `Bearer ${sharedSecret}`;
+  }
+
+  const response = await fetch(`${base}${pathname}`, {
+    method,
+    headers,
+    body: payload === undefined ? undefined : JSON.stringify(payload),
+  });
+  const text = await response.text();
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`Gateway returned non-JSON response (${response.status}):\n${text}`);
+  }
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(`Gateway request failed (${response.status}): ${data.error || text}`);
+  }
+  return data;
+}
+
 function findSearchScript() {
   const candidates = [
     process.env.DIFY_RAG_SEARCH_SCRIPT,
@@ -144,6 +211,24 @@ server.registerTool(
     },
   },
   async ({ query, top_k, category, dataset_ids, score_threshold }) => {
+    if (gatewayUrl()) {
+      const response = await requestGateway("POST", "/search", {
+        query,
+        top_k: top_k ?? 5,
+        category,
+        dataset_ids,
+        score_threshold,
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: response.output || "No output returned from Dify gateway search.",
+          },
+        ],
+      };
+    }
+
     const args = ["--query", query, "--format", "markdown"];
     pushOptional(args, "--top-k", top_k ?? 5);
     pushOptional(args, "--category", category);
@@ -192,6 +277,24 @@ server.registerTool(
     },
   },
   async ({ category, doc_name, markdown, user, dry_run }) => {
+    if (gatewayUrl()) {
+      const response = await requestGateway("POST", "/inject", {
+        category,
+        doc_name,
+        markdown,
+        user,
+        dry_run,
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: response.output || "No output returned from Dify gateway ingestion.",
+          },
+        ],
+      };
+    }
+
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dify-rag-inject-"));
     const tmpFile = path.join(tmpDir, "document.md");
 
@@ -234,6 +337,18 @@ server.registerTool(
     inputSchema: {},
   },
   async () => {
+    if (gatewayUrl()) {
+      const response = await requestGateway("GET", "/datasets");
+      return {
+        content: [
+          {
+            type: "text",
+            text: response.output || "No datasets found.",
+          },
+        ],
+      };
+    }
+
     const output = await runSearchScript(["--list-datasets"]);
     return {
       content: [
