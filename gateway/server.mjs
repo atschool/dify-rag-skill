@@ -41,6 +41,22 @@ function configValue(key, fallback = "") {
 const host = configValue("DIFY_RAG_GATEWAY_HOST", "127.0.0.1");
 const port = Number(configValue("DIFY_RAG_GATEWAY_PORT", "8787"));
 const sharedSecret = configValue("DIFY_RAG_SHARED_SECRET", "");
+const pathPrefix = normalizePathPrefix(configValue("DIFY_RAG_GATEWAY_PATH_PREFIX", ""));
+
+function normalizePathPrefix(value) {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "/") return "";
+  return `/${raw.replace(/^\/+|\/+$/g, "")}`;
+}
+
+function routePath(pathname) {
+  if (!pathPrefix) return pathname;
+  if (pathname === pathPrefix) return "/";
+  if (pathname.startsWith(`${pathPrefix}/`)) {
+    return pathname.slice(pathPrefix.length) || "/";
+  }
+  return pathname;
+}
 
 function findScript(fileName) {
   const candidates = [
@@ -228,8 +244,9 @@ async function handleInject(req, res) {
 
 async function route(req, res) {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  const pathname = routePath(url.pathname);
 
-  if (url.pathname === "/health") {
+  if (pathname === "/health") {
     sendJson(res, 200, {
       ok: true,
       service: "dify-rag-gateway",
@@ -243,15 +260,15 @@ async function route(req, res) {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/datasets") {
+  if (req.method === "GET" && pathname === "/datasets") {
     await handleDatasets(req, res);
     return;
   }
-  if (req.method === "POST" && url.pathname === "/search") {
+  if (req.method === "POST" && pathname === "/search") {
     await handleSearch(req, res);
     return;
   }
-  if (req.method === "POST" && url.pathname === "/inject") {
+  if (req.method === "POST" && pathname === "/inject") {
     await handleInject(req, res);
     return;
   }

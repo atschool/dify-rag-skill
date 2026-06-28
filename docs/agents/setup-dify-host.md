@@ -8,7 +8,7 @@ The host should run:
 
 - Dify itself.
 - `dify-rag-gateway` on `127.0.0.1:8787`.
-- `dify-rag-remote-mcp` on `127.0.0.1:8788/mcp`.
+- `dify-rag-remote-mcp` on `127.0.0.1:8788/rag`.
 - `cloudflared` as a system service that publishes public hostnames through Cloudflare Tunnel.
 
 Only this host should store Dify API keys.
@@ -115,7 +115,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const client = new Client({ name: "smoke-test", version: "0.1.0" });
-const transport = new StreamableHTTPClientTransport(new URL("http://127.0.0.1:8788/mcp"));
+const transport = new StreamableHTTPClientTransport(new URL("http://127.0.0.1:8788/rag"));
 await client.connect(transport);
 const tools = await client.listTools();
 console.log(tools.tools.map((tool) => `${tool.name}: ${tool.description}`).join("\n"));

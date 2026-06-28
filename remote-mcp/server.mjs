@@ -44,7 +44,7 @@ function configValue(key, fallback = "") {
 
 const host = configValue("DIFY_RAG_REMOTE_MCP_HOST", "127.0.0.1");
 const port = Number(configValue("DIFY_RAG_REMOTE_MCP_PORT", "8788"));
-const mcpPath = configValue("DIFY_RAG_REMOTE_MCP_PATH", "/mcp");
+const mcpPath = configValue("DIFY_RAG_REMOTE_MCP_PATH", "/rag");
 const gatewayBase = configValue(
   "DIFY_RAG_REMOTE_GATEWAY_URL",
   configValue("DIFY_RAG_GATEWAY_URL", "http://127.0.0.1:8787")

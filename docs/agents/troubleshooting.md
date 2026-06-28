@@ -52,8 +52,7 @@ Common symptoms:
 From a machine outside the Dify host:
 
 ```bash
-curl -sS -I https://rag-mcp.example.com/health | sed -n '1,16p'
-curl -sS -I https://rag-mcp.example.com/mcp | sed -n '1,16p'
+curl -sS -I https://mcp.example.com/rag | sed -n '1,16p'
 ```
 
 Expected before login:

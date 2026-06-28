@@ -211,7 +211,8 @@ DIFY_RAG_CLOUDFLARE_ACCESS=auto
 DIFY_RAG_CLOUDFLARED_BIN=cloudflared
 DIFY_RAG_REMOTE_MCP_HOST=127.0.0.1
 DIFY_RAG_REMOTE_MCP_PORT=8788
-DIFY_RAG_REMOTE_MCP_PATH=/mcp
+DIFY_RAG_REMOTE_MCP_PATH=/rag
+DIFY_RAG_GATEWAY_PATH_PREFIX=
 DIFY_RAG_ADD_ALLOWED_EMAILS=
 ```
 
@@ -232,7 +233,8 @@ Use:
 - `DIFY_RAG_SHARED_SECRET` only when you deliberately protect the gateway with a shared bearer token. Prefer Cloudflare Access or another identity-aware proxy for shared deployments.
 - `DIFY_RAG_CLOUDFLARE_ACCESS=auto` lets the MCP server automatically attach a user-scoped Cloudflare Access token when the gateway redirects to Access.
 - `DIFY_RAG_CLOUDFLARED_BIN` can point to a custom `cloudflared` binary path.
-- `DIFY_RAG_REMOTE_MCP_HOST`, `DIFY_RAG_REMOTE_MCP_PORT`, and `DIFY_RAG_REMOTE_MCP_PATH` control the Remote MCP listener. The default endpoint is `http://127.0.0.1:8788/mcp`.
+- `DIFY_RAG_REMOTE_MCP_HOST`, `DIFY_RAG_REMOTE_MCP_PORT`, and `DIFY_RAG_REMOTE_MCP_PATH` control the Remote MCP listener. The default endpoint is `http://127.0.0.1:8788/rag`.
+- `DIFY_RAG_GATEWAY_PATH_PREFIX` lets the gateway accept prefixed routes such as `/rag/search` for public URLs like `https://api.example.com/rag`.
 - `DIFY_RAG_ADD_ALLOWED_EMAILS` is a comma-separated allowlist for `add_knowledge`. Users not on the list can still use `search_knowledge`.
 
 Environment variables are also supported and take precedence over the config file:
@@ -321,7 +323,7 @@ Recommended layout:
 ```text
 Claude user
   -> Claude Custom Connector
-  -> https://your-mcp.example.com/mcp
+  -> https://mcp.example.com/rag
   -> Cloudflare Access
   -> Cloudflare Tunnel
   -> dify-rag-remote-mcp on the Dify host
@@ -331,13 +333,13 @@ Claude user
 
 Keep the two hostnames conceptually separate:
 
-- `rag-api.example.com`: gateway API for installed local clients or debugging.
-- `rag-mcp.example.com`: Remote MCP endpoint that Claude Custom Connector connects to.
+- `api.example.com/rag`: optional gateway API for installed local clients or debugging.
+- `mcp.example.com/rag`: Remote MCP endpoint that Claude Custom Connector connects to.
 
 The public Custom Connector should point to the Remote MCP URL:
 
 ```text
-https://rag-mcp.example.com/mcp
+https://mcp.example.com/rag
 ```
 
 The Remote MCP server exposes exactly two user-facing tools:
@@ -369,12 +371,12 @@ On the Dify host, install and start both local services:
 The Remote MCP server listens on `127.0.0.1:8788` by default. Put a Cloudflare Tunnel public hostname in front of it:
 
 ```text
-https://rag-mcp.example.com -> http://127.0.0.1:8788
+https://mcp.example.com -> http://127.0.0.1:8788
 ```
 
-Protect that hostname with Cloudflare Access or equivalent identity-aware access control so the Remote MCP server receives the authenticated user email header.
+Set `DIFY_RAG_REMOTE_MCP_PATH=/rag` on the Dify host. Protect the hostname with Cloudflare Access or equivalent identity-aware access control so the Remote MCP server receives the authenticated user email header.
 
-For Claude Custom Connector setup, use Streamable HTTP and the `/mcp` endpoint. Claude custom connectors are configured from Claude settings and connect to a publicly reachable HTTPS MCP server.
+For Claude Custom Connector setup, use Streamable HTTP and the `/rag` endpoint. Claude custom connectors are configured from Claude settings and connect to a publicly reachable HTTPS MCP server.
 
 ### Manage Cloudflare Access Emails
 

@@ -18,10 +18,14 @@ DIFY_RAG_CLOUDFLARE_ACCESS=auto
 DIFY_RAG_CLOUDFLARED_BIN=cloudflared
 
 # Remote MCP is the public Custom Connector endpoint.
-# Put Cloudflare Tunnel in front of http://127.0.0.1:8788/mcp.
+# Put Cloudflare Tunnel in front of http://127.0.0.1:8788/rag.
 DIFY_RAG_REMOTE_MCP_HOST=127.0.0.1
 DIFY_RAG_REMOTE_MCP_PORT=8788
-DIFY_RAG_REMOTE_MCP_PATH=/mcp
+DIFY_RAG_REMOTE_MCP_PATH=/rag
+
+# Optional path prefix for published gateway URLs such as
+# https://api.example.com/rag/search.
+DIFY_RAG_GATEWAY_PATH_PREFIX=
 
 # Comma-separated email allowlist for add_knowledge.
 # Search remains available to everyone who can access the connector.

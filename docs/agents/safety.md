@@ -47,8 +47,8 @@ This search can produce false positives in documentation. Review each hit before
 Use placeholders:
 
 ```text
-https://rag-mcp.example.com/mcp
-https://rag-api.example.com
+https://mcp.example.com/rag
+https://api.example.com/rag
 admin@example.com
 user@example.com
 ```
@@ -77,8 +77,7 @@ curl -sS http://127.0.0.1:8788/health
 For public endpoints:
 
 ```bash
-curl -sS -I https://rag-mcp.example.com/health | sed -n '1,16p'
-curl -sS -I https://rag-mcp.example.com/mcp | sed -n '1,16p'
+curl -sS -I https://mcp.example.com/rag | sed -n '1,16p'
 ```
 
 Unauthenticated public checks should usually return a Cloudflare Access redirect, not `200 OK`.

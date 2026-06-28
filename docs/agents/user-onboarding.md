@@ -29,7 +29,7 @@ rag-access-email list
 Tell the user to connect Claude to:
 
 ```text
-https://rag-mcp.example.com/mcp
+https://mcp.example.com/rag
 ```
 
 They do not need:
