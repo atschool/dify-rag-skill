@@ -7,7 +7,7 @@ This repository contains two companion skills:
 - `dify-rag-inject`: prepare Google Drive documents as retrieval-friendly Markdown and send them to a Dify ingestion Workflow.
 - `dify-rag-search`: search Dify knowledge bases and return retrieved chunks so Claude can write the final answer.
 - `dify-rag` MCP server: expose Dify search and ingestion to Claude.app / Claude Desktop.
-- `dify-rag-gateway`: optional HTTP gateway for teams, so employee machines do not need Dify API keys.
+- `dify-rag-gateway`: optional HTTP gateway for shared deployments, so client machines do not need Dify API keys.
 - `dify-rag-remote-mcp`: Remote MCP server for a Claude Custom Connector.
 
 The design keeps responsibilities separate:
@@ -15,8 +15,8 @@ The design keeps responsibilities separate:
 - Dify stores and retrieves knowledge.
 - Claude Code reads source documents, prepares Markdown, inspects retrieved chunks, and writes user-facing answers.
 - Dify is not asked to generate the final answer in the search flow.
-- In team mode, only the gateway host stores Dify API keys. Employee machines call the gateway.
-- In connector mode, employees connect Claude to one Remote MCP endpoint. Search is available to connector users, while document addition is allowlisted by email.
+- In gateway mode, only the gateway host stores Dify API keys. Client machines call the gateway.
+- In connector mode, users connect Claude to one Remote MCP endpoint. Search is available to connector users, while document addition is allowlisted by email.
 
 This is an independent helper project. It is not an official Dify, Anthropic, or Google product.
 
@@ -57,7 +57,7 @@ When you ask Claude Code to search the knowledge base, the search skill:
 - `dify_inject.py`: Python client for calling Dify `/workflows/run`.
 - `dify_search.py`: Python client for Dify dataset listing and retrieval.
 - `mcp-server/`: local MCP server for Claude.app / Claude Desktop.
-- `gateway/`: HTTP gateway for shared/team deployments.
+- `gateway/`: HTTP gateway for shared deployments.
 - `remote-mcp/`: Streamable HTTP Remote MCP server for Claude Custom Connectors.
 - `install.sh`: interactive installer for both skills.
 - `config.example`: safe config template with no real URL or API key.
@@ -150,7 +150,7 @@ The installer will:
 
 The config file is local to your machine and is intentionally ignored by Git.
 
-For employee installs that should not store Dify API keys locally, enter a hosted gateway URL when the installer asks for it. In that mode, the installer skips the Dify API key prompts.
+For client installs that should not store Dify API keys locally, enter a hosted gateway URL when the installer asks for it. In that mode, the installer skips the Dify API key prompts.
 
 ## Claude.app / Claude Desktop MCP Setup
 
@@ -227,9 +227,9 @@ Use:
 - `DIFY_APP_KEY` for the ingestion Workflow API key.
 - `DIFY_DATASET_API_KEY` for Knowledge Base search API access.
 - `DIFY_DATASET_IDS` only when you want to restrict search to specific datasets.
-- `DIFY_RAG_GATEWAY_URL` for employee/team installs that should call a hosted gateway instead of Dify directly.
+- `DIFY_RAG_GATEWAY_URL` for client installs that should call a hosted gateway instead of Dify directly.
 - `DIFY_RAG_REMOTE_GATEWAY_URL` for the Remote MCP server when it should call a different gateway URL. Leave empty on the Dify host to use `http://127.0.0.1:8787`.
-- `DIFY_RAG_SHARED_SECRET` only when you deliberately protect the gateway with a shared bearer token. Prefer Cloudflare Access or another identity-aware proxy for team use.
+- `DIFY_RAG_SHARED_SECRET` only when you deliberately protect the gateway with a shared bearer token. Prefer Cloudflare Access or another identity-aware proxy for shared deployments.
 - `DIFY_RAG_CLOUDFLARE_ACCESS=auto` lets the MCP server automatically attach a user-scoped Cloudflare Access token when the gateway redirects to Access.
 - `DIFY_RAG_CLOUDFLARED_BIN` can point to a custom `cloudflared` binary path.
 - `DIFY_RAG_REMOTE_MCP_HOST`, `DIFY_RAG_REMOTE_MCP_PORT`, and `DIFY_RAG_REMOTE_MCP_PATH` control the Remote MCP listener. The default endpoint is `http://127.0.0.1:8788/mcp`.
@@ -244,17 +244,17 @@ export DIFY_DATASET_API_KEY="your-knowledge-base-api-key"
 export DIFY_DATASET_IDS="dataset-id-1,dataset-id-2"
 export DIFY_RAG_GATEWAY_URL="https://your-gateway.example.com"
 export DIFY_RAG_CLOUDFLARE_ACCESS="auto"
-export DIFY_RAG_ADD_ALLOWED_EMAILS="admin@example.com,knowledge-owner@example.com"
+export DIFY_RAG_ADD_ALLOWED_EMAILS="admin@example.com,maintainer@example.com"
 ```
 
-## Team Gateway Mode
+## Gateway Mode
 
-Use gateway mode when multiple employees need Claude.app access but you do not want to distribute Dify API keys.
+Use gateway mode when multiple client machines need Claude.app access but you do not want to distribute Dify API keys.
 
 Recommended layout:
 
 ```text
-Employee Claude.app
+Claude.app client
   -> local dify-rag MCP server
   -> https://your-gateway.example.com
   -> Cloudflare Tunnel / Access
@@ -287,7 +287,7 @@ For an always-on Mac host, install the gateway as a launchd service:
 
 The doctor command checks local Dify, the gateway health endpoint, the launchd service, and whether `cloudflared` is running.
 
-For employee machines, install the same repository and enter only the hosted gateway URL when prompted:
+For client machines, install the same repository and enter only the hosted gateway URL when prompted:
 
 ```bash
 git clone https://github.com/atschool/dify-rag-skill.git
@@ -301,25 +301,25 @@ After installation, configure Claude.app to run:
 node ~/.dify-rag/mcp-server/server.mjs
 ```
 
-The employee MCP server will call `DIFY_RAG_GATEWAY_URL` and will not require `DIFY_BASE_URL`, `DIFY_APP_KEY`, or `DIFY_DATASET_API_KEY`.
+The client MCP server will call `DIFY_RAG_GATEWAY_URL` and will not require `DIFY_BASE_URL`, `DIFY_APP_KEY`, or `DIFY_DATASET_API_KEY`.
 
-If the hosted gateway is protected by Cloudflare Access, each employee should install `cloudflared` and authenticate once:
+If the hosted gateway is protected by Cloudflare Access, each client machine should install `cloudflared` and authenticate once:
 
 ```bash
 brew install cloudflared
 cloudflared access login https://your-gateway.example.com
 ```
 
-After login, the MCP server obtains a user-scoped Access token with `cloudflared access token -app=...` and sends it as the `cf-access-token` header. Employees do not receive Dify API keys.
+After login, the MCP server obtains a user-scoped Access token with `cloudflared access token -app=...` and sends it as the `cf-access-token` header. Client machines do not receive Dify API keys.
 
 ## Remote MCP / Custom Connector Mode
 
-Use Remote MCP mode when employees should use Claude from web, desktop, or mobile without installing this repository locally.
+Use Remote MCP mode when users should access the connector from Claude web, desktop, or mobile without installing this repository locally.
 
 Recommended layout:
 
 ```text
-Employee Claude
+Claude user
   -> Claude Custom Connector
   -> https://your-mcp.example.com/mcp
   -> Cloudflare Access
@@ -331,7 +331,7 @@ Employee Claude
 
 Keep the two hostnames conceptually separate:
 
-- `rag-api.example.com`: internal gateway API for installed local clients or debugging.
+- `rag-api.example.com`: gateway API for installed local clients or debugging.
 - `rag-mcp.example.com`: Remote MCP endpoint that Claude Custom Connector connects to.
 
 The public Custom Connector should point to the Remote MCP URL:
@@ -342,19 +342,19 @@ https://rag-mcp.example.com/mcp
 
 The Remote MCP server exposes exactly two user-facing tools:
 
-- `search_knowledge`: `社内ナレッジから関連情報を検索します。`
-- `add_knowledge`: `資料を社内ナレッジに追加・更新します。利用権限があるメンバー向けの機能です。`
+- `search_knowledge`: `Search the configured Dify knowledge base for relevant source chunks.`
+- `add_knowledge`: `Add or update prepared Markdown in the configured Dify knowledge base. Maintainer access is required.`
 
 Configure the allowlist on the Dify host:
 
 ```bash
-DIFY_RAG_ADD_ALLOWED_EMAILS=admin@example.com,knowledge-owner@example.com
+DIFY_RAG_ADD_ALLOWED_EMAILS=admin@example.com,maintainer@example.com
 ```
 
 If a user who is not allowlisted tries to add material, the tool returns:
 
 ```text
-この機能は、現在のアカウントでは利用できません。資料追加が必要な場合は、管理者またはナレッジ担当者に依頼してください。
+This connector account is not allowed to add or update knowledge. Ask a maintainer to add the material.
 ```
 
 On the Dify host, install and start both local services:
@@ -378,16 +378,16 @@ For Claude Custom Connector setup, use Streamable HTTP and the `/mcp` endpoint. 
 
 ### Manage Cloudflare Access Emails
 
-For small teams, you can add or remove allowed connector users from the command line instead of opening the Cloudflare dashboard every time.
+For small deployments, you can add or remove allowed connector users from the command line instead of opening the Cloudflare dashboard every time.
 
-This is an administrator-only task. Regular connector users do not need a Cloudflare API token, this repository, a terminal command, or local setup for `rag-access-email`. They only need to connect Claude to the published Custom Connector URL after their email address has been allowed in Cloudflare Access.
+This is an operator-only task. Regular connector users do not need a Cloudflare API token, this repository, a terminal command, or local setup for `rag-access-email`. They only need to connect Claude to the published Custom Connector URL after their email address has been allowed in Cloudflare Access.
 
 Recommended operation:
 
-- Admins who add or remove connector users configure `rag-access-email`.
-- Employees who only search knowledge do not configure it.
-- Windows employees do not need this command unless they are also responsible for managing the Cloudflare Access allowlist.
-- For simplicity, keep allowlist management on one or two admin Macs.
+- Operators who add or remove connector users configure `rag-access-email`.
+- Search-only users do not configure it.
+- Windows users do not need this command unless they also manage the Cloudflare Access allowlist.
+- For simplicity, keep allowlist management on one or two operator machines.
 
 First create a Cloudflare API token with permission to edit Access policies. Store only non-secret IDs in a local config file:
 
@@ -551,12 +551,12 @@ This does not remove anything from Dify.
 ## Security Notes
 
 - Never commit `config`; it may contain API keys.
-- `config.example` must stay free of real URLs, keys, dataset IDs, customer names, or internal examples.
+- `config.example` must stay free of real URLs, keys, dataset IDs, customer names, or deployment-specific examples.
 - The installer sets the local config file to mode `600` when it creates or updates it.
 - The search client prints retrieved source chunks. Treat terminal output and logs accordingly.
 - Review generated Markdown before uploading if the source document contains sensitive data.
-- For public forks, keep examples generic and avoid real company, customer, dataset, or network details.
-- For team deployments, publish only the gateway or Remote MCP endpoint. Do not expose the Dify web/API service directly to the Internet.
+- For public forks, keep examples generic and avoid real customer, dataset, or network details.
+- For shared deployments, publish only the gateway or Remote MCP endpoint. Do not expose the Dify web/API service directly to the Internet.
 - For Custom Connector deployments, point Claude at the Remote MCP endpoint rather than Dify itself.
 - Protect the gateway and Remote MCP endpoint with Cloudflare Access, a private network, or equivalent controls before running them against sensitive knowledge bases.
 - Keep `DIFY_RAG_ADD_ALLOWED_EMAILS` narrow. Search and write permissions are intentionally separate.
@@ -566,7 +566,7 @@ This does not remove anything from Dify.
 | Symptom | Likely Cause | What To Check |
 |---|---|---|
 | `DIFY_BASE_URL is not set` | Missing base URL | Run `./install.sh` or set the environment variable. |
-| `APIキーが未設定` or `DIFY_APP_KEY` missing | Missing Workflow API key | Set the ingestion Workflow API key. |
+| `DIFY_APP_KEY` missing | Missing Workflow API key | Set the ingestion Workflow API key. |
 | `DIFY_DATASET_API_KEY is not set` | Missing Knowledge Base API key | Set the Knowledge Base API key. |
 | `HTTP 401` | Invalid key or wrong key type | Check whether you are using the right key for Workflow or Knowledge Base API access. |
 | `No datasets matched` | Dataset filter too narrow or key lacks access | Check `DIFY_DATASET_IDS`, `--category`, and key permissions. |
@@ -608,13 +608,13 @@ It should stay running and log to stderr. Press `Ctrl-C` to stop it.
 Before publishing or releasing, scan for accidental private data:
 
 ```bash
-rg -n '192\.168\.[0-9]+\.[0-9]+|(^|[^0-9])10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]+\.[0-9]+|DIFY_APP_KEY=.+|DIFY_DATASET_API_KEY=.+|customer|internal' .
+rg -n '192\.168\.[0-9]+\.[0-9]+|(^|[^0-9])10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]+\.[0-9]+|DIFY_APP_KEY=.+|DIFY_DATASET_API_KEY=.+|customer|private-host' .
 git status --short
 ```
 
 ## Repository Status
 
-This project is a lightweight integration helper. It assumes you already operate Dify and can design the ingestion Workflow and dataset permissions appropriate for your organization.
+This project is a lightweight integration helper. It assumes you already operate Dify and can design the ingestion Workflow and dataset permissions appropriate for your deployment.
 
 ## License
 

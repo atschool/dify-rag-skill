@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Remote MCP server for the Dify RAG team connector.",
+  "description": "Remote MCP server for the Dify RAG connector.",
   "bin": {
     "dify-rag-remote-mcp": "./server.mjs"
   },

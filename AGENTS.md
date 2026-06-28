@@ -7,7 +7,7 @@ The repository manages a Dify-backed RAG connector for Claude. The public README
 ## First Rules
 
 - Never commit or print local `config` files, Dify API keys, Cloudflare API tokens, Cloudflare Tunnel tokens, service tokens, session cookies, or copied JWTs.
-- Never put real internal IP addresses, private hostnames, customer names, dataset IDs, or production-only examples into public docs.
+- Never put real private IP addresses, private hostnames, customer names, dataset IDs, or production-only examples into public docs.
 - Keep `config.example` generic and empty.
 - Prefer `rg` for repository search.
 - Use `apply_patch` for manual edits.
@@ -25,10 +25,10 @@ Claude
   -> local Dify API
 ```
 
-The preferred team deployment is:
+The preferred shared deployment is:
 
 ```text
-Employee Claude
+Claude user
   -> Claude Custom Connector
   -> https://rag-mcp.example.com/mcp
   -> Cloudflare Access
@@ -52,7 +52,7 @@ Read the relevant runbook before acting:
 - Dify host setup or service install: `docs/agents/setup-dify-host.md`
 - Cloudflare Tunnel, hostnames, or Access app setup: `docs/agents/setup-cloudflare.md`
 - `rag-access-email` command setup: `docs/agents/setup-admin-command.md`
-- Add, remove, or test an employee: `docs/agents/employee-onboarding.md`
+- Add, remove, or test a connector user: `docs/agents/user-onboarding.md`
 - Diagnose broken search, connector, tunnel, or write permission: `docs/agents/troubleshooting.md`
 - General safety rules and review checklist: `docs/agents/safety.md`
 
@@ -64,7 +64,6 @@ Agents can prepare commands, edit repository files, inspect logs, and run local 
 - Logging in to Cloudflare, Claude, Google, or Dify.
 - Approving browser permission prompts that change access policy or create persistent credentials.
 - Pasting one-time secrets into Keychain or local environment variables.
-- Confirming public DNS, Cloudflare Access policies, and employee email lists.
+- Confirming public DNS, Cloudflare Access policies, and connector user email lists.
 
 When a task touches access control, first inspect the current state and prepare the exact change. Only apply the change when the user has clearly asked you to proceed.
-

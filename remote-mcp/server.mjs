@@ -17,7 +17,7 @@ const CONFIG_PATHS = [
 ];
 
 const WRITE_DENIED_MESSAGE =
-  "この機能は、現在のアカウントでは利用できません。資料追加が必要な場合は、管理者またはナレッジ担当者に依頼してください。";
+  "This connector account is not allowed to add or update knowledge. Ask a maintainer to add the material.";
 
 function loadConfig() {
   const config = {};
@@ -184,7 +184,7 @@ async function requestGateway(method, pathname, payload) {
 
 function createMcpServer(identity) {
   const server = new McpServer({
-    name: "atschool-internal-knowledge",
+    name: "dify-rag-knowledge",
     version: "0.1.0",
   });
 
@@ -192,13 +192,13 @@ function createMcpServer(identity) {
     "search_knowledge",
     {
       title: "Search Knowledge",
-      description: "社内ナレッジから関連情報を検索します。",
+      description: "Search the configured Dify knowledge base for relevant source chunks.",
       inputSchema: {
-        query: z.string().min(1).describe("検索したい質問やキーワード"),
-        top_k: z.number().int().min(1).max(20).optional().describe("返す検索結果数"),
-        category: z.string().optional().describe("任意のカテゴリ名またはデータセット名の絞り込み"),
-        dataset_ids: z.array(z.string().min(1)).optional().describe("任意のDify dataset ID絞り込み"),
-        score_threshold: z.number().min(0).max(1).optional().describe("任意の最小スコア"),
+        query: z.string().min(1).describe("Question or keywords to search for"),
+        top_k: z.number().int().min(1).max(20).optional().describe("Number of results to return"),
+        category: z.string().optional().describe("Optional category name or dataset name filter"),
+        dataset_ids: z.array(z.string().min(1)).optional().describe("Optional Dify dataset ID filter"),
+        score_threshold: z.number().min(0).max(1).optional().describe("Optional minimum score"),
       },
     },
     async ({ query, top_k, category, dataset_ids, score_threshold }) => {
@@ -214,7 +214,7 @@ function createMcpServer(identity) {
         content: [
           {
             type: "text",
-            text: response.output || "検索結果はありませんでした。",
+            text: response.output || "No matching results were found.",
           },
         ],
       };
@@ -225,12 +225,12 @@ function createMcpServer(identity) {
     "add_knowledge",
     {
       title: "Add Knowledge",
-      description: "資料を社内ナレッジに追加・更新します。利用権限があるメンバー向けの機能です。",
+      description: "Add or update prepared Markdown in the configured Dify knowledge base. Maintainer access is required.",
       inputSchema: {
-        category: z.string().min(1).describe("追加先カテゴリ"),
-        doc_name: z.string().min(1).describe("資料名"),
-        markdown: z.string().min(1).describe("RAG検索向けに整形したMarkdown本文"),
-        dry_run: z.boolean().optional().describe("Difyへ送らず投入内容だけ確認する"),
+        category: z.string().min(1).describe("Destination category or routing key"),
+        doc_name: z.string().min(1).describe("Document name"),
+        markdown: z.string().min(1).describe("Prepared Markdown body for retrieval"),
+        dry_run: z.boolean().optional().describe("Preview without sending to Dify"),
       },
     },
     async ({ category, doc_name, markdown, dry_run }) => {
@@ -258,7 +258,7 @@ function createMcpServer(identity) {
         content: [
           {
             type: "text",
-            text: response.output || "資料を社内ナレッジに追加・更新しました。",
+            text: response.output || "Knowledge was added or updated.",
           },
         ],
       };

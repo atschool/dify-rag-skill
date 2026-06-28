@@ -2,7 +2,7 @@
 
 Use this runbook for administrators who add or remove connector users from Cloudflare Access.
 
-Regular employees do not need this command. Windows employees do not need it unless they are also responsible for managing the Cloudflare Access allowlist.
+Regular connector users do not need this command. Windows users do not need it unless they also manage the Cloudflare Access allowlist.
 
 ## What The Command Does
 
@@ -108,4 +108,3 @@ If the command fails, check:
 - The API token has Access policy write permission.
 - `CLOUDFLARE_ACCOUNT_ID` is correct.
 - `CLOUDFLARE_ACCESS_POLICY_ID` points to the intended policy.
-

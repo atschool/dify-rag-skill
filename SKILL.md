@@ -1,136 +1,170 @@
 ---
 name: dify-rag-inject
-description: Google Drive上の資料（特に画像主体のPDFスライド）をDifyのナレッジベースにRAG化して投入する。ユーザーが「Driveの〇〇をDifyに入れて」「この資料をRAG化して」「ナレッジに追加して」などと依頼したときに使う。Drive MCPでの取得、画像PDFの画像化とVision読み取り、整形Markdown化、ワークフローAPIでの投入までを一貫して行う。
+description: Prepare Google Drive documents, especially image-heavy PDF slide decks, as retrieval-friendly Markdown and send them to a Dify ingestion Workflow. Use when the user asks to add a Drive file to Dify, convert a document for RAG, or update a Dify knowledge base.
 ---
 
-# Drive資料 → Dify RAG投入
+# Drive Document To Dify RAG
 
-Google Drive上の資料をDifyナレッジベースに投入するためのskill。対象は主に**画像主体のPDF**（スライドをPDF化した、テキストレイヤーの無い資料）。テキストPDFやGoogleドキュメントはより簡単に処理できる（最後の補足参照）。
+This skill helps Claude Code ingest Google Drive documents into a Dify knowledge base. It is designed for image-heavy PDFs, such as slide decks exported to PDF without a text layer, but it also works with text PDFs and Google Docs.
 
-整形（読み取り）はこのClaude Code自身が行う。外部のClaude APIには投げない。
+Claude Code reads and structures the source content itself. Do not send the document to an external Claude API from this skill.
 
-## 前提
+## Prerequisites
 
-- Google Drive MCP が接続済み
-- `pdftoppm`（poppler）が使える（無ければ `brew install poppler`）
-- このskillフォルダに `dify_inject.py` と `config` が同梱されている
-- `config` に `DIFY_BASE_URL` と `DIFY_APP_KEY` が記入済み（install.sh で生成、ユーザーがキーを記入）
-- Dify側で「ナレッジ投入パイプライン」ワークフローが公開済み
+- Google Drive MCP, or an equivalent Drive connector, is available.
+- `pdftoppm` from Poppler is available. On macOS: `brew install poppler`.
+- The installed skill directory contains `dify_inject.py` and local config.
+- Local config contains `DIFY_BASE_URL` and `DIFY_APP_KEY`.
+- A published Dify Workflow accepts `category`, `doc_name`, and `doc_text`.
 
-## 全体フロー
+## Flow
 
+```text
+Drive connector
+  -> detect text layer
+  -> render image-heavy PDFs when needed
+  -> read and structure content
+  -> write retrieval-friendly Markdown
+  -> send with dify_inject.py
 ```
-Drive MCPで取得 → 画像主体か判定 → 画像化(pdftoppm) → Vision整形(自分で読む) → 投入(dify_inject.py)
-```
 
----
+## Step 1: Locate The Source File
 
-## STEP 1: 対象をDriveで特定
+Use the Drive connector to find the target file. Record the file ID. If there are multiple likely matches, ask the user to choose.
 
-Drive MCPの `search_files` で対象を探す。`fileId` を控える。候補が複数ならユーザーに確認する。
+## Step 2: Check For A Text Layer
 
-## STEP 2: テキストレイヤーの有無を判定
+Try the available Drive text-reading tool first.
 
-`read_file_content` を試す。
-- テキストが返る → テキストPDF/ドキュメント。STEP 3〜4を飛ばし STEP 5（整形）へ。
-- 空が返る → 画像主体PDF。STEP 3へ。
+- If text is returned, skip rendering and continue to Step 5.
+- If no useful text is returned, treat the file as an image-heavy PDF and continue to Step 3.
 
-## STEP 3: 取得して画像化（画像主体PDFのみ）
+## Step 3: Download And Render Image-Heavy PDFs
 
-### 3-1. base64取得 → PDF復元
-`download_file_content` で取得。結果が大きい場合はツール結果ファイルに保存される。
+### 3.1 Decode The Downloaded PDF
 
-⚠️ **入れ子JSON**: download結果は二重にJSONが入れ子。最上位は配列 `[{type, text}]`、その `text` の中身が**さらにJSON文字列**で、PDFのbase64は `content` フィールドにある（先頭 `JVBERi` = PDF署名）。
+Some Drive tool results wrap JSON inside JSON. The outer value may be an array like `[{type, text}]`, where `text` contains another JSON string. The PDF base64 is usually in the inner `content` field.
 
 ```python
-import json, base64
-with open('<ツール結果JSONパス>') as f:
+import base64
+import json
+
+with open("<tool-result-json-path>") as f:
     data = json.load(f)
-inner = json.loads(data[0]['text'])      # textの中がさらにJSON
-pdf = base64.b64decode(inner['content'])  # contentがPDF本体
-open('source.pdf','wb').write(pdf)
+
+inner = json.loads(data[0]["text"])
+pdf = base64.b64decode(inner["content"])
+
+with open("source.pdf", "wb") as f:
+    f.write(pdf)
 ```
 
-### 3-2. 画像主体か再確認（任意）
+### 3.2 Confirm Whether Rendering Is Needed
+
 ```bash
-pdffonts source.pdf | head     # emb列が全てno
-pdftotext source.pdf - | head  # 中身が空(\fのみ)なら画像主体で確定
+pdffonts source.pdf | head
+pdftotext source.pdf - | head
 ```
 
-### 3-3. 画像化
+If the text output is empty or unusable, render pages to images.
+
+### 3.3 Render Pages
+
 ```bash
 mkdir -p pages
-pdftoppm -jpeg -r 130 source.pdf pages/page   # pages/page-01.jpg ...
+pdftoppm -jpeg -r 160 source.pdf pages/page
 ```
-表が細かく読めなければ `-r 180`〜`200` に上げる。
 
-## STEP 4: 自分で画像を読む（Vision整形）
+If small tables or numbers are hard to read, raise the resolution to `180` or `200`.
 
-⚠️ **画像サイズ制限**: viewは8000px超の画像を弾く。**横1100pxにリサイズして2ページずつ縦連結**すると効率的（約1100×1244px）。
+## Step 4: Read Rendered Images
 
-```python
-from PIL import Image
-def stack(pages, out, w=1100):
-    ims=[Image.open(f'pages/page-{p:02d}.jpg') for p in pages]
-    rs=[im.resize((w,int(im.height*w/im.width))) for im in ims]
-    h=sum(i.height for i in rs)+8*(len(rs)-1)
-    c=Image.new('RGB',(w,h),'white'); y=0
-    for im in rs: c.paste(im,(0,y)); y+=im.height+8
-    c.save(out,quality=90)
-```
-連結画像を順にviewで開き、内容を漏れなく読み取る。表・数字・固有名詞は正確に。
-
-## STEP 5: 整形Markdownを書く（RAG最適化）
-
-整形の質が検索精度に直結する。
-
-1. **冒頭にメタ情報**: 資料名・作成元・種別・問い合わせ先を1〜3行（検索アンカー）。
-2. **見出しで意味の塊を分ける**（`##` `###`）。1チャンク1トピック。
-3. **数字・料金・条件・期日は必ず表に**する。質問が当たりやすくなる。箇条書きに埋もれさせない。
-4. **固有名詞・略称は省略しない**（検索キーワードになる）。
-5. **グラフ・画像は数値を文章化**（「グラフ参照」ではなく実数値を起こす）。
-6. 1ファイル=1資料。分割せず1つのMarkdownに（チャンク化はDify側がやる）。
-
-`<doc_name>_整形版.md` で保存。
-
-## STEP 6: categoryを決める
-
-categoryは**Difyナレッジ（器）の名前**になる。同じcategory→同じ器、新しいcategory→器が自動新規作成（ワークフローのIF/ELSE分岐）。
-
-- 粒度は「部署 > 中分類」の**中分類単位**。
-- 手入力。迷う場合はユーザーに候補を出して確認する。
-
-## STEP 7: 投入
+If the viewer rejects very large images, resize pages to about 1100px wide and combine two pages vertically per contact sheet.
 
 ```bash
-python3 "$HOME/.claude/skills/dify-rag-inject/dify_inject.py" \
-    --category '<カテゴリ名>' \
-    --doc-name '<doc_name>' \
-    --file './<doc_name>_整形版.md'
+python3 - <<'PY'
+from PIL import Image
+from pathlib import Path
+
+pages = sorted(Path("pages").glob("*.jpg"))
+for i in range(0, len(pages), 2):
+    imgs = []
+    for page in pages[i:i+2]:
+        img = Image.open(page)
+        width = 1100
+        height = int(img.height * width / img.width)
+        imgs.append(img.resize((width, height)))
+
+    sheet = Image.new("RGB", (1100, sum(img.height for img in imgs)), "white")
+    y = 0
+    for img in imgs:
+        sheet.paste(img, (0, y))
+        y += img.height
+    sheet.save(f"group-{i//2+1:03}.jpg", quality=90)
+PY
 ```
-- APIキー・ベースURLは同梱 `config` から自動で読まれる。
-- `--dry-run` で送信せず内容確認のみ。
-- 成功で `status: succeeded` / `✅ 投入成功`。
-- 同じ category・doc_name で再投入すると **UPSERT**（上書き更新）。重複は作られない。
 
-### 投入後の確認をユーザーに促す
-- Difyナレッジ画面に指定category名の器ができたか
-- その器に doc_name のドキュメントが入りチャンク化されたか
+Read each contact sheet carefully. Preserve tables, numbers, dates, names, product terms, and definitions.
 
----
+## Step 5: Write Retrieval-Friendly Markdown
 
-## トラブル時（諦めず最低3経路）
+Retrieval quality depends heavily on the Markdown structure.
 
-| 症状 | 原因 | 対処 |
+1. Start with short metadata: document title, source, document type, and useful anchors.
+2. Use headings to separate semantic units.
+3. Put numbers, pricing, dates, conditions, and plans into tables where possible.
+4. Keep proper nouns, abbreviations, and product terms explicit.
+5. Convert chart visuals into written values and observations.
+6. Keep one source file as one Markdown document unless the user asks otherwise.
+
+Save the file as:
+
+```text
+<doc_name>_prepared.md
+```
+
+## Step 6: Choose A Category
+
+`category` is passed to the Dify ingestion Workflow. It can represent a dataset, collection, routing key, or any other grouping implemented by that Workflow.
+
+Use a stable, human-readable category. If unsure, propose a few options and ask the user to choose.
+
+## Step 7: Send To Dify
+
+```bash
+python3 ~/.claude/skills/dify-rag-inject/dify_inject.py \
+  --category "<category>" \
+  --doc-name "<doc_name>" \
+  --file "./<doc_name>_prepared.md"
+```
+
+- API keys and base URL are read from local config.
+- Use `--dry-run` to preview without sending.
+- A successful call reports `status: succeeded`.
+- Whether repeated calls upsert, replace, or duplicate documents depends on the configured Dify Workflow.
+
+## Step 8: Ask The User To Verify
+
+After ingestion, ask the user to confirm in Dify that:
+
+- The expected dataset or collection exists.
+- The document appears under the expected name.
+- The document was segmented or indexed as expected.
+- A Dify recall/retrieval test can find relevant chunks.
+
+## Troubleshooting
+
+| Symptom | Likely Cause | What To Check |
 |---|---|---|
-| `401` | APIキー誤り/未設定 | `config` の `DIFY_APP_KEY` を確認 |
-| 接続エラー | DifyのURLに届かない | Dify起動・同一LAN・`curl <BASE_URL>` で疎通確認 |
-| `400 Workflow not published` | ワークフロー未公開 | Difyで「公開する」を押す |
-| `read_file_content` が空 | 画像主体PDF | 正常。STEP 3へ |
-| 表の数字が潰れる | dpi不足 | `pdftoppm -r 180`〜`200` で再画像化 |
-| download結果が読めない | 入れ子JSON | STEP 3-1の通り `data[0]['text']` を再度 `json.loads` |
+| `401` | Wrong or missing Workflow API key | Check `DIFY_APP_KEY`. |
+| Connection error | Dify URL is unreachable | Check Dify, network, proxy, and `DIFY_BASE_URL`. |
+| `400 Workflow not published` | The Dify Workflow is not published | Publish the Workflow app in Dify. |
+| Empty text from Drive | Image-heavy PDF | Continue with rendering. |
+| Table text is unreadable | Render resolution is too low | Re-render with higher DPI. |
+| Download payload is confusing | Nested JSON wrapper | Decode the inner `text` JSON first. |
 
-全滅したら、何が・なぜ弾かれ・ユーザーが何をすれば解決するかをまとめて提示する。
+If all routes fail, explain what failed, why it likely failed, and what the user should do next.
 
-## 補足: テキストPDF/Googleドキュメント
-STEP 2で `read_file_content` がテキストを返したら画像化・Visionは不要。そのテキストをSTEP 5の規約で整形し、STEP 7で投入するだけ。
+## Text PDFs And Google Docs
+
+If Step 2 returns usable text, rendering is unnecessary. Structure the text according to Step 5, then send it to Dify with Step 7.

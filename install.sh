@@ -2,12 +2,12 @@
 #
 # dify-rag-skill installer
 #
-# 実行すると以下を行います:
-#   1. ~/.claude/skills/ に投入skillと検索skillを配置
-#   2. pdftoppm (poppler) の有無をチェック
-#   3. Dify設定を対話式に config へ書き込む
+# This script:
+#   1. Installs the ingest and search skills under ~/.claude/skills/
+#   2. Checks for pdftoppm (poppler)
+#   3. Writes Dify settings to config interactively
 #
-# 使い方:  ./install.sh
+# Usage: ./install.sh
 #
 set -euo pipefail
 
@@ -87,7 +87,7 @@ echo " dify-rag-skill install"
 echo "========================================"
 echo ""
 
-# 1. skills フォルダへ配置
+# 1. Install skill and server files.
 mkdir -p "$INJECT_SKILL_DIR" "$SEARCH_SKILL_DIR" "$CONFIG_DIR" "$MCP_SERVER_DIR" "$GATEWAY_DIR" "$REMOTE_MCP_DIR"
 cp "$SRC_DIR/SKILL.md" "$INJECT_SKILL_DIR/SKILL.md"
 cp "$SRC_DIR/dify_inject.py" "$INJECT_SKILL_DIR/dify_inject.py"
@@ -117,7 +117,7 @@ echo "      Installed MCP server: $MCP_SERVER_DIR"
 echo "      Installed gateway server: $GATEWAY_DIR"
 echo "      Installed Remote MCP server: $REMOTE_MCP_DIR"
 
-# 2. poppler (pdftoppm) チェック
+# 2. Check poppler (pdftoppm).
 if command -v pdftoppm >/dev/null 2>&1; then
     echo "[2/3] poppler: OK ($(command -v pdftoppm))"
 else
@@ -147,7 +147,7 @@ else
     echo "      Install Node.js, then run ./install.sh again to enable Claude.app MCP use."
 fi
 
-# 3. config 生成と対話式設定
+# 3. Create or update config interactively.
 if [ -f "$CONFIG_FILE" ]; then
     echo "[3/3] config: using existing file ($CONFIG_FILE)"
 elif [ -f "$INJECT_SKILL_DIR/config" ] && [ ! -L "$INJECT_SKILL_DIR/config" ]; then
@@ -179,7 +179,7 @@ CURRENT_GATEWAY_URL="$(get_config_value "DIFY_RAG_GATEWAY_URL" "$CONFIG_FILE")"
 if [ -z "$CURRENT_GATEWAY_URL" ]; then
     echo ""
     echo "Hosted gateway URL is optional."
-    echo "Use it for employee installs that should not store Dify API keys locally."
+    echo "Use it for client installs that should not store Dify API keys locally."
     echo "Example: https://rag-api.example.com"
     printf "Hosted gateway URL (leave empty for direct Dify setup): "
     GATEWAY_URL=""
@@ -219,7 +219,7 @@ if [ -n "$CURRENT_GATEWAY_URL" ]; then
     echo "  - dify-rag-inject: add Drive documents to Dify"
     echo "  - dify-rag-search: retrieve Dify chunks for Claude to answer from"
     echo "  - dify-rag MCP server: expose Dify search and ingestion to Claude.app"
-    echo "  - dify-rag Remote MCP server: expose team connector over Streamable HTTP"
+    echo "  - dify-rag Remote MCP server: expose shared connector over Streamable HTTP"
     echo ""
     echo "Claude.app MCP server command:"
     echo "  node $MCP_SERVER_DIR/server.mjs"
@@ -329,7 +329,7 @@ echo "Installed:"
 echo "  - dify-rag-inject: add Drive documents to Dify"
 echo "  - dify-rag-search: retrieve Dify chunks for Claude to answer from"
 echo "  - dify-rag MCP server: expose Dify search and ingestion to Claude.app"
-echo "  - dify-rag Remote MCP server: expose team connector over Streamable HTTP"
+echo "  - dify-rag Remote MCP server: expose shared connector over Streamable HTTP"
 echo ""
 echo "Claude.app MCP server command:"
 echo "  node $MCP_SERVER_DIR/server.mjs"

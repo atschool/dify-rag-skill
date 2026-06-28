@@ -6,7 +6,7 @@ Use this checklist before editing, committing, pushing, or changing access contr
 
 - Do not commit `config`.
 - Do not commit Dify API keys, Cloudflare API tokens, Cloudflare Tunnel tokens, Cloudflare Access service tokens, cookies, JWTs, SSH private keys, or one-time login codes.
-- Do not commit real internal IP addresses, private hostnames, dataset IDs, customer names, or production document names.
+- Do not commit real private IP addresses, private hostnames, dataset IDs, customer names, or production document names.
 - Do not expose Dify itself to the public Internet.
 - Do not give write access to broad groups. `add_knowledge` should stay limited to maintainers.
 
@@ -62,7 +62,7 @@ There are two independent permission layers:
 - Cloudflare Access allowlist: who can reach the Remote MCP connector.
 - `DIFY_RAG_ADD_ALLOWED_EMAILS`: who can use `add_knowledge`.
 
-Do not add every connector user to `DIFY_RAG_ADD_ALLOWED_EMAILS`. Most employees should search only.
+Do not add every connector user to `DIFY_RAG_ADD_ALLOWED_EMAILS`. Most users should search only.
 
 ## Good Final Checks
 
@@ -82,4 +82,3 @@ curl -sS -I https://rag-mcp.example.com/mcp | sed -n '1,16p'
 ```
 
 Unauthenticated public checks should usually return a Cloudflare Access redirect, not `200 OK`.
-

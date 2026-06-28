@@ -1,15 +1,15 @@
-# このファイルを「config」という名前でコピーして、自分の値を入れてください。
+# Copy this file to "config" and fill in local values.
 #   cp config.example config
 #
-# DIFY_BASE_URL とAPIキーは利用するDify環境の値を入れてください。
-# このファイル自体には実在のURLやキーを書かないでください。
+# Do not put real URLs, API keys, dataset IDs, customer names, or
+# environment-specific examples in this template.
 
 DIFY_BASE_URL=
 DIFY_APP_KEY=
 DIFY_DATASET_API_KEY=
 DIFY_DATASET_IDS=
 
-# Employee installs can use a hosted gateway instead of local Dify API keys.
+# Client installs can use a hosted gateway instead of local Dify API keys.
 # Leave empty on the Dify host itself.
 DIFY_RAG_GATEWAY_URL=
 DIFY_RAG_REMOTE_GATEWAY_URL=

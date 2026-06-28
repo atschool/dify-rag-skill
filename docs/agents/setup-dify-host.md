@@ -126,8 +126,8 @@ NODE
 Expected tools:
 
 ```text
-search_knowledge: 社内ナレッジから関連情報を検索します。
-add_knowledge: 資料を社内ナレッジに追加・更新します。利用権限があるメンバー向けの機能です。
+search_knowledge: Search the configured Dify knowledge base for relevant source chunks.
+add_knowledge: Add or update prepared Markdown in the configured Dify knowledge base. Maintainer access is required.
 ```
 
 ## Dify Health
@@ -140,4 +140,3 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1/
 ```
 
 A redirect from the frontend can be normal. API failures should be diagnosed with Dify container logs.
-

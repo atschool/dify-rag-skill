@@ -1,15 +1,16 @@
-# APIキーを含む設定ファイルはコミットしない
+# Local config files can contain API keys.
 config
 
-# 作業中の中間ファイル
+# Temporary extraction and conversion output.
 pages/
 *.pdf
-*_整形版.md
+*_prepared.md
+*_formatted.md
 *_search_results.*
 grp*.jpg
 page-*.jpg
 
-# OS / エディタ
+# OS / editor files.
 .DS_Store
 __pycache__/
 *.pyc

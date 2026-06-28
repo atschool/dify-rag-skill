@@ -17,7 +17,7 @@ The important user-facing connector URL is:
 https://rag-mcp.example.com/mcp
 ```
 
-`rag-api` is for the gateway and debugging. Employees should not open it directly.
+`rag-api` is for the gateway and debugging. End users should not open it directly.
 
 ## Cloudflare Tunnel
 
@@ -103,4 +103,3 @@ http://127.0.0.1:8788/mcp
 - A search-only user can use `search_knowledge`.
 - A search-only user receives the write-denied message when calling `add_knowledge`.
 - A maintainer listed in `DIFY_RAG_ADD_ALLOWED_EMAILS` can use `add_knowledge`.
-

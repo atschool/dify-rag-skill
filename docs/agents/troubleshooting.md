@@ -77,13 +77,13 @@ Likely causes:
 
 - Custom Connector is not connected or not enabled.
 - The user was not allowed through Cloudflare Access.
-- Claude did not infer that Dify/internal knowledge should be used.
+- Claude did not infer that Dify or the configured knowledge base should be used.
 - The prompt asked for the source document rather than the RAG knowledge base.
 
 Recommended user prompt:
 
 ```text
-社内ナレッジから、◯◯について調べて答えて。Difyの検索結果を根拠にして。
+Search the configured Dify knowledge base for <topic> and answer from the retrieved evidence.
 ```
 
 If the tool is available, Claude should call `search_knowledge`.
@@ -95,7 +95,7 @@ For search-only users, this is expected.
 The denial message is:
 
 ```text
-この機能は、現在のアカウントでは利用できません。資料追加が必要な場合は、管理者またはナレッジ担当者に依頼してください。
+This connector account is not allowed to add or update knowledge. Ask a maintainer to add the material.
 ```
 
 If the user should be a maintainer, add their email to `DIFY_RAG_ADD_ALLOWED_EMAILS` on the Dify host and restart Remote MCP.
@@ -146,4 +146,3 @@ python3 ~/.claude/skills/dify-rag-inject/dify_inject.py \
   --file ./test.md \
   --dry-run
 ```
-
