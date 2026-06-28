@@ -378,6 +378,15 @@ For Claude Custom Connector setup, use Streamable HTTP and the `/mcp` endpoint. 
 
 For small teams, you can add or remove allowed connector users from the command line instead of opening the Cloudflare dashboard every time.
 
+This is an administrator-only task. Regular connector users do not need a Cloudflare API token, this repository, a terminal command, or local setup for `rag-access-email`. They only need to connect Claude to the published Custom Connector URL after their email address has been allowed in Cloudflare Access.
+
+Recommended operation:
+
+- Admins who add or remove connector users configure `rag-access-email`.
+- Employees who only search knowledge do not configure it.
+- Windows employees do not need this command unless they are also responsible for managing the Cloudflare Access allowlist.
+- For simplicity, keep allowlist management on one or two admin Macs.
+
 First create a Cloudflare API token with permission to edit Access policies. Store only non-secret IDs in a local config file:
 
 ```bash
