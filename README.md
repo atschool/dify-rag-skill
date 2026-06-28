@@ -374,6 +374,53 @@ Protect that hostname with Cloudflare Access or equivalent identity-aware access
 
 For Claude Custom Connector setup, use Streamable HTTP and the `/mcp` endpoint. Claude custom connectors are configured from Claude settings and connect to a publicly reachable HTTPS MCP server.
 
+### Manage Cloudflare Access Emails
+
+For small teams, you can add or remove allowed connector users from the command line instead of opening the Cloudflare dashboard every time.
+
+First create a Cloudflare API token with permission to edit Access policies. Store only non-secret IDs in a local config file:
+
+```bash
+mkdir -p ~/.dify-rag
+cat > ~/.dify-rag/cloudflare-access.env <<'EOF'
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_ACCESS_POLICY_ID=your-policy-id
+EOF
+```
+
+Store the API token in macOS Keychain:
+
+```bash
+security add-generic-password \
+  -a "$USER" \
+  -s dify-rag-cloudflare-api-token \
+  -w "YOUR_CLOUDFLARE_API_TOKEN" \
+  -U
+```
+
+Then use:
+
+```bash
+./scripts/cloudflare-access-email.sh list
+./scripts/cloudflare-access-email.sh add user@example.com
+./scripts/cloudflare-access-email.sh remove user@example.com
+```
+
+To call it from anywhere, install the shortcut command:
+
+```bash
+./scripts/install-admin-command.sh
+```
+
+Then:
+
+```bash
+rag-access-email add user@example.com
+rag-access-email list
+```
+
+This controls who can reach the Remote MCP connector through Cloudflare Access. It is separate from `DIFY_RAG_ADD_ALLOWED_EMAILS`, which controls who can use the `add_knowledge` tool after they are already connected.
+
 ## Usage From Claude Code
 
 ### Add Documents To Dify
