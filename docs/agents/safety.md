@@ -59,7 +59,7 @@ Avoid production-only examples. If a specific local value is useful for the curr
 
 There are two independent permission layers:
 
-- Cloudflare Access allowlist: who can reach the Remote MCP connector.
+- Remote MCP OAuth allowlist: who can use the connector. Configure this with `DIFY_RAG_AUTH_ALLOWED_EMAILS` or `DIFY_RAG_AUTH_ALLOWED_DOMAINS`.
 - `DIFY_RAG_ADD_ALLOWED_EMAILS`: who can use `add_knowledge`.
 
 Do not add every connector user to `DIFY_RAG_ADD_ALLOWED_EMAILS`. Most users should search only.
@@ -77,7 +77,7 @@ curl -sS http://127.0.0.1:8788/health
 For public endpoints:
 
 ```bash
-curl -sS -I https://mcp.example.com/rag | sed -n '1,16p'
+curl -sS https://mcp.example.com/.well-known/oauth-protected-resource/rag
 ```
 
-Unauthenticated public checks should usually return a Cloudflare Access redirect, not `200 OK`.
+The MCP hostname should expose OAuth protected resource metadata. A Cloudflare Access redirect on the MCP hostname will prevent Claude Custom Connectors from connecting.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -44,12 +44,34 @@ function configValue(key, fallback = "") {
 
 const host = configValue("DIFY_RAG_REMOTE_MCP_HOST", "127.0.0.1");
 const port = Number(configValue("DIFY_RAG_REMOTE_MCP_PORT", "8788"));
-const mcpPath = configValue("DIFY_RAG_REMOTE_MCP_PATH", "/rag");
+const mcpPath = normalizeRoutePath(configValue("DIFY_RAG_REMOTE_MCP_PATH", "/rag"));
 const gatewayBase = configValue(
   "DIFY_RAG_REMOTE_GATEWAY_URL",
   configValue("DIFY_RAG_GATEWAY_URL", "http://127.0.0.1:8787")
 ).replace(/\/+$/, "");
 const gatewaySecret = configValue("DIFY_RAG_SHARED_SECRET", "");
+const authProvider = configValue("DIFY_RAG_AUTH_PROVIDER", "none").trim().toLowerCase();
+const oauthScopes = configValue("DIFY_RAG_OAUTH_SCOPES", "openid email profile").trim();
+const oauthAuthorizationServer = configValue(
+  "DIFY_RAG_OAUTH_AUTHORIZATION_SERVER",
+  authProvider === "google" ? "https://accounts.google.com" : ""
+).replace(/\/+$/, "");
+const publicMcpUrl = configValue("DIFY_RAG_REMOTE_PUBLIC_URL", "").replace(/\/+$/, "");
+const tokenIdentityCache = new Map();
+
+function normalizeRoutePath(value) {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "/") return "/";
+  return `/${raw.replace(/^\/+|\/+$/g, "")}`;
+}
+
+function truthy(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || "").trim());
+}
+
+function authEnabled() {
+  return Boolean(authProvider && authProvider !== "none");
+}
 
 function splitCsv(value) {
   return String(value || "")
@@ -64,6 +86,28 @@ function allowedAddEmails() {
       configValue(
         "DIFY_RAG_ADD_ALLOWED_EMAILS",
         configValue("DIFY_RAG_INGEST_ALLOWED_EMAILS", "")
+      )
+    )
+  );
+}
+
+function allowedAuthEmails() {
+  return new Set(
+    splitCsv(
+      configValue(
+        "DIFY_RAG_AUTH_ALLOWED_EMAILS",
+        configValue("DIFY_RAG_ALLOWED_EMAILS", "")
+      )
+    )
+  );
+}
+
+function allowedAuthDomains() {
+  return new Set(
+    splitCsv(
+      configValue(
+        "DIFY_RAG_AUTH_ALLOWED_DOMAINS",
+        configValue("DIFY_RAG_ALLOWED_DOMAINS", "")
       )
     )
   );
@@ -88,7 +132,7 @@ function firstHeader(headers, names) {
   return "";
 }
 
-function identityFromRequest(req) {
+function fallbackIdentityFromRequest(req) {
   const headerEmail = firstHeader(req.headers, [
     "cf-access-authenticated-user-email",
     "x-authenticated-user-email",
@@ -113,10 +157,234 @@ function identityFromRequest(req) {
   return { email: "", source: "anonymous" };
 }
 
+function bearerTokenFromRequest(req) {
+  const auth = firstHeader(req.headers, ["authorization"]);
+  if (!auth.toLowerCase().startsWith("bearer ")) return "";
+  return auth.slice("bearer ".length).trim();
+}
+
+function emailDomain(email) {
+  const parts = String(email || "").toLowerCase().split("@");
+  return parts.length === 2 ? parts[1] : "";
+}
+
+function canUseConnector(identity) {
+  if (!authEnabled()) return true;
+  if (!identity.email) return false;
+  if (truthy(configValue("DIFY_RAG_AUTH_ALLOW_ALL", ""))) return true;
+
+  const email = identity.email.toLowerCase();
+  const domain = emailDomain(email);
+  const hostedDomain = String(identity.hostedDomain || "").toLowerCase();
+  const emails = allowedAuthEmails();
+  const domains = allowedAuthDomains();
+  const addEmails = allowedAddEmails();
+
+  if (!emails.size && !domains.size && !addEmails.size) return false;
+  return (
+    emails.has(email) ||
+    addEmails.has(email) ||
+    domains.has(domain) ||
+    Boolean(hostedDomain && domains.has(hostedDomain))
+  );
+}
+
 function canAddKnowledge(identity) {
   const allowed = allowedAddEmails();
   if (!allowed.size) return false;
   return Boolean(identity.email && allowed.has(identity.email.toLowerCase()));
+}
+
+async function verifyGoogleBearerToken(token) {
+  if (!token) {
+    return { ok: false, status: 401, message: "OAuth authentication is required." };
+  }
+
+  const cacheKey = createHash("sha256").update(token).digest("hex");
+  const cached = tokenIdentityCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+
+  let response;
+  try {
+    response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      status: 401,
+      message: `Could not validate the OAuth token: ${error.message}`,
+    };
+  }
+
+  let data = {};
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: 401,
+      message: data.error_description || data.error || "Invalid Google OAuth token.",
+    };
+  }
+
+  const email = String(data.email || "").toLowerCase();
+  if (!email) {
+    return { ok: false, status: 401, message: "The OAuth token did not include an email address." };
+  }
+  if (data.email_verified === false || data.email_verified === "false") {
+    return { ok: false, status: 403, message: "The Google account email is not verified." };
+  }
+
+  const result = {
+    ok: true,
+    identity: {
+      email,
+      source: "google-oauth",
+      subject: String(data.sub || ""),
+      hostedDomain: String(data.hd || "").toLowerCase(),
+    },
+  };
+  tokenIdentityCache.set(cacheKey, {
+    expiresAt: Date.now() + 5 * 60 * 1000,
+    result,
+  });
+  return result;
+}
+
+async function authenticateRequest(req) {
+  if (!authEnabled()) {
+    return { ok: true, identity: fallbackIdentityFromRequest(req) };
+  }
+
+  if (authProvider !== "google") {
+    return {
+      ok: false,
+      status: 500,
+      message: `Unsupported DIFY_RAG_AUTH_PROVIDER: ${authProvider}`,
+    };
+  }
+
+  const verified = await verifyGoogleBearerToken(bearerTokenFromRequest(req));
+  if (!verified.ok) return verified;
+  if (!canUseConnector(verified.identity)) {
+    return {
+      ok: false,
+      status: 403,
+      message: "This account is not allowed to use this connector.",
+    };
+  }
+  return verified;
+}
+
+function requestOrigin(req) {
+  const forwardedProto = firstHeader(req.headers, ["x-forwarded-proto"]);
+  const hostHeader = firstHeader(req.headers, ["x-forwarded-host", "host"]);
+  const fallbackHost = `${host}:${port}`;
+  const hostname = hostHeader || fallbackHost;
+  const proto =
+    forwardedProto ||
+    (hostname.startsWith("127.0.0.1") || hostname.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${hostname}`;
+}
+
+function resourceUrl(req) {
+  if (publicMcpUrl) return publicMcpUrl;
+  return new URL(mcpPath, requestOrigin(req)).href.replace(/\/+$/, "");
+}
+
+function protectedResourceMetadataUrl(req) {
+  const resource = new URL(resourceUrl(req));
+  const suffix = resource.pathname === "/" ? "" : resource.pathname;
+  return `${resource.origin}/.well-known/oauth-protected-resource${suffix}`;
+}
+
+function isProtectedResourceMetadataPath(pathname) {
+  if (pathname === "/.well-known/oauth-protected-resource") return true;
+  const suffix = mcpPath === "/" ? "" : mcpPath;
+  return pathname === `/.well-known/oauth-protected-resource${suffix}`;
+}
+
+function oauthScopeList() {
+  return oauthScopes.split(/\s+/).map((scope) => scope.trim()).filter(Boolean);
+}
+
+function protectedResourceMetadata(req) {
+  const metadata = {
+    resource: resourceUrl(req),
+    bearer_methods_supported: ["header"],
+    scopes_supported: oauthScopeList(),
+  };
+  if (oauthAuthorizationServer) {
+    metadata.authorization_servers = [oauthAuthorizationServer];
+  }
+  return metadata;
+}
+
+function quoteHeaderValue(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function requestIdFromBody(parsedBody) {
+  if (!parsedBody || Array.isArray(parsedBody)) return null;
+  return parsedBody.id === undefined ? null : parsedBody.id;
+}
+
+function sendOAuthChallenge(req, res, parsedBody, message) {
+  res.writeHead(401, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "WWW-Authenticate": `Bearer resource_metadata="${quoteHeaderValue(
+      protectedResourceMetadataUrl(req)
+    )}", scope="${quoteHeaderValue(oauthScopes)}", error="invalid_token", error_description="${quoteHeaderValue(
+      message
+    )}"`,
+  });
+  res.end(
+    JSON.stringify(
+      {
+        jsonrpc: "2.0",
+        error: {
+          code: -32001,
+          message,
+        },
+        id: requestIdFromBody(parsedBody),
+      },
+      null,
+      2
+    )
+  );
+}
+
+function sendMcpError(res, status, parsedBody, message) {
+  sendJson(res, status, {
+    jsonrpc: "2.0",
+    error: {
+      code: status === 403 ? -32003 : -32603,
+      message,
+    },
+    id: requestIdFromBody(parsedBody),
+  });
+}
+
+function calledToolNames(parsedBody) {
+  const requests = Array.isArray(parsedBody) ? parsedBody : [parsedBody];
+  return requests
+    .filter(Boolean)
+    .filter((request) => request.method === "tools/call")
+    .map((request) => request.params && request.params.name)
+    .filter(Boolean);
+}
+
+function hasProtectedToolCall(parsedBody) {
+  return calledToolNames(parsedBody).some((name) => name === "search_knowledge" || name === "add_knowledge");
 }
 
 async function readJson(req) {
@@ -270,8 +538,22 @@ function createMcpServer(identity) {
 
 const transports = {};
 
-async function handleMcp(req, res, parsedBody) {
-  const identity = identityFromRequest(req);
+async function handleMcp(req, res, parsedBody, identity) {
+  if (authEnabled() && req.method === "POST") {
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+    const mcpServer = createMcpServer(identity);
+    await mcpServer.connect(transport);
+    try {
+      await transport.handleRequest(req, res, parsedBody);
+    } finally {
+      await transport.close();
+      await mcpServer.close();
+    }
+    return;
+  }
+
   const sessionId = firstHeader(req.headers, ["mcp-session-id"]);
   let transport = sessionId ? transports[sessionId] : undefined;
   let mcpServer;
@@ -328,8 +610,21 @@ const server = http.createServer(async (req, res) => {
         service: "dify-rag-remote-mcp",
         config_loaded: Boolean(config._loadedFrom),
         gateway_url: gatewayBase,
+        auth_provider: authProvider || "none",
+        auth_enabled: authEnabled(),
+        auth_allowlist_configured:
+          allowedAuthEmails().size > 0 ||
+          allowedAuthDomains().size > 0 ||
+          allowedAddEmails().size > 0 ||
+          truthy(configValue("DIFY_RAG_AUTH_ALLOW_ALL", "")),
+        public_url_configured: Boolean(publicMcpUrl),
         add_allowlist_configured: allowedAddEmails().size > 0,
       });
+      return;
+    }
+
+    if (isProtectedResourceMetadataPath(url.pathname)) {
+      sendJson(res, 200, protectedResourceMetadata(req));
       return;
     }
 
@@ -340,13 +635,26 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "GET" || req.method === "DELETE") {
       const parsedBody = undefined;
-      await handleMcp(req, res, parsedBody);
+      await handleMcp(req, res, parsedBody, fallbackIdentityFromRequest(req));
       return;
     }
 
     if (req.method === "POST") {
       const parsedBody = await readJson(req);
-      await handleMcp(req, res, parsedBody);
+      let identity = fallbackIdentityFromRequest(req);
+      if (hasProtectedToolCall(parsedBody)) {
+        const auth = await authenticateRequest(req);
+        if (!auth.ok) {
+          if (auth.status === 401) {
+            sendOAuthChallenge(req, res, parsedBody, auth.message);
+          } else {
+            sendMcpError(res, auth.status || 500, parsedBody, auth.message);
+          }
+          return;
+        }
+        identity = auth.identity;
+      }
+      await handleMcp(req, res, parsedBody, identity);
       return;
     }
 

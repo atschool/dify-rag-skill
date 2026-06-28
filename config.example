@@ -22,6 +22,18 @@ DIFY_RAG_CLOUDFLARED_BIN=cloudflared
 DIFY_RAG_REMOTE_MCP_HOST=127.0.0.1
 DIFY_RAG_REMOTE_MCP_PORT=8788
 DIFY_RAG_REMOTE_MCP_PATH=/rag
+DIFY_RAG_REMOTE_PUBLIC_URL=
+
+# Optional OAuth for Remote MCP.
+# Use this for production Claude Custom Connector deployments.
+# For Google OAuth, create a Web OAuth client and configure Claude with
+# that client ID and secret. The public URL must match the connector URL.
+DIFY_RAG_AUTH_PROVIDER=
+DIFY_RAG_OAUTH_AUTHORIZATION_SERVER=
+DIFY_RAG_OAUTH_SCOPES=openid email profile
+DIFY_RAG_AUTH_ALLOWED_EMAILS=
+DIFY_RAG_AUTH_ALLOWED_DOMAINS=
+DIFY_RAG_AUTH_ALLOW_ALL=
 
 # Optional path prefix for published gateway URLs such as
 # https://api.example.com/rag/search.

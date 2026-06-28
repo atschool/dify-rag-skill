@@ -8,7 +8,7 @@ Start from the layer closest to the failure and work inward.
 
 ```text
 Claude Custom Connector
-  -> Cloudflare Access
+  -> Remote MCP OAuth
   -> Cloudflare Tunnel
   -> dify-rag-remote-mcp :8788
   -> dify-rag-gateway :8787
@@ -52,20 +52,22 @@ Common symptoms:
 From a machine outside the Dify host:
 
 ```bash
-curl -sS -I https://mcp.example.com/rag | sed -n '1,16p'
+curl -sS https://mcp.example.com/.well-known/oauth-protected-resource/rag
 ```
 
-Expected before login:
+Expected:
 
-```text
-HTTP/2 302
-www-authenticate: Cloudflare-Access ...
+```json
+{
+  "resource": "https://mcp.example.com/rag",
+  "authorization_servers": ["https://accounts.google.com"]
+}
 ```
 
 Interpretation:
 
-- `302` to Cloudflare Access: good; hostname is protected.
-- `200 OK`: dangerous if unauthenticated; Access may not be applied.
+- OAuth protected resource metadata: good; Claude can discover the authorization server.
+- `302` to Cloudflare Access: bad for Claude Custom Connectors; remove Cloudflare Access from the MCP hostname and rely on Remote MCP OAuth.
 - `404`: hostname may route to the wrong service or path.
 - `502` or `1033`: tunnel or origin service problem.
 - Timeout: DNS, tunnel, firewall, or host sleep problem.
@@ -75,7 +77,7 @@ Interpretation:
 Likely causes:
 
 - Custom Connector is not connected or not enabled.
-- The user was not allowed through Cloudflare Access.
+- The user was not allowed by the Remote MCP OAuth allowlist.
 - Claude did not infer that Dify or the configured knowledge base should be used.
 - The prompt asked for the source document rather than the RAG knowledge base.
 

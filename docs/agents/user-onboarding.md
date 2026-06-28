@@ -6,12 +6,12 @@ Use this runbook when adding, removing, or testing a Claude user.
 
 Search-only user:
 
-- Add the email to Cloudflare Access.
+- Add the email to `DIFY_RAG_AUTH_ALLOWED_EMAILS`, or allow the user's email domain with `DIFY_RAG_AUTH_ALLOWED_DOMAINS`.
 - Do not add the email to `DIFY_RAG_ADD_ALLOWED_EMAILS`.
 
 Knowledge maintainer:
 
-- Add the email to Cloudflare Access.
+- Add the email to `DIFY_RAG_AUTH_ALLOWED_EMAILS`, or allow the user's email domain with `DIFY_RAG_AUTH_ALLOWED_DOMAINS`.
 - Add the email to `DIFY_RAG_ADD_ALLOWED_EMAILS` on the Dify host.
 - Restart or reload the Remote MCP service if needed.
 
@@ -19,11 +19,24 @@ Most users should be search-only users.
 
 ## Add Search Access
 
-On an admin machine with `rag-access-email` configured:
+On the Dify host, edit:
+
+```text
+~/.dify-rag/config
+```
+
+Set one or both:
 
 ```bash
-rag-access-email add user@example.com
-rag-access-email list
+DIFY_RAG_AUTH_ALLOWED_EMAILS=user@example.com,maintainer@example.com
+DIFY_RAG_AUTH_ALLOWED_DOMAINS=example.com
+```
+
+Restart the Remote MCP service:
+
+```bash
+launchctl kickstart -k "gui/$(id -u)/dify-rag.remote-mcp"
+./scripts/doctor-remote-mcp.sh
 ```
 
 Tell the user to connect Claude to:
@@ -90,18 +103,13 @@ Then test `add_knowledge` with that maintainer account.
 
 ## Remove A User
 
-Remove connector access:
-
-```bash
-rag-access-email remove user@example.com
-rag-access-email list
-```
+Remove the email from `DIFY_RAG_AUTH_ALLOWED_EMAILS`, or remove the domain from `DIFY_RAG_AUTH_ALLOWED_DOMAINS` if appropriate.
 
 If the user was a maintainer, also remove them from `DIFY_RAG_ADD_ALLOWED_EMAILS` on the Dify host and restart Remote MCP.
 
 ## Acceptance Checklist
 
-- User can authenticate through Cloudflare Access.
+- User can authenticate through the configured OAuth provider.
 - User can connect Claude to the Remote MCP URL.
 - Search-only user can search.
 - Search-only user cannot add knowledge.

@@ -1,4 +1,4 @@
-# Set Up Cloudflare Tunnel And Access
+# Set Up Cloudflare Tunnel And Remote MCP OAuth
 
 Use this runbook to publish the Dify RAG connector without exposing Dify itself.
 
@@ -36,17 +36,37 @@ launchctl print system/com.cloudflare.cloudflared | sed -n '1,35p'
 
 If the command output contains a token, do not copy it into final reports.
 
-## Cloudflare Access
+## Remote MCP OAuth
 
-Create a self-hosted Access application for the Remote MCP hostname:
+Do not put Cloudflare Access in front of `mcp.example.com`. Claude Custom Connectors need to reach the MCP endpoint and complete OAuth with the connector. A Cloudflare Access redirect makes Claude see a login page instead of an MCP server.
 
-```text
-Application name: mcp-rag
-Destination: mcp.example.com
-Policy: allow only approved user emails
+Set OAuth on the Dify host:
+
+```bash
+DIFY_RAG_REMOTE_PUBLIC_URL=https://mcp.example.com/rag
+DIFY_RAG_AUTH_PROVIDER=google
+DIFY_RAG_AUTH_ALLOWED_EMAILS=user@example.com,maintainer@example.com
+DIFY_RAG_AUTH_ALLOWED_DOMAINS=example.com
+DIFY_RAG_ADD_ALLOWED_EMAILS=maintainer@example.com
 ```
 
-Create another Access application for the gateway hostname if you publish it:
+Create a Google Cloud Web OAuth client and configure Claude's Custom Connector with that client ID and client secret.
+
+Authorized redirect URI:
+
+```text
+https://claude.ai/api/mcp/auth_callback
+```
+
+Use scopes:
+
+```text
+openid email profile
+```
+
+## Cloudflare Access For Gateway
+
+Create a self-hosted Access application for the gateway hostname if you publish it:
 
 ```text
 Application name: api-rag
@@ -54,29 +74,24 @@ Destination: api.example.com
 Policy: allow only approved admin or operator emails
 ```
 
-Cloudflare Access should pass the authenticated email to the origin. The Remote MCP server checks these headers:
-
-- `cf-access-authenticated-user-email`
-- `cf-access-jwt-assertion`
-- `authorization` bearer JWT with an `email` claim
-
 ## Public Verification
 
-From any machine not already authenticated through Cloudflare Access:
+From any machine:
 
 ```bash
-curl -sS -I https://mcp.example.com/rag | sed -n '1,16p'
+curl -sS https://mcp.example.com/.well-known/oauth-protected-resource/rag
 ```
 
 Expected result:
 
-```text
-HTTP/2 302
-location: https://...cloudflareaccess.com/...
-www-authenticate: Cloudflare-Access ...
+```json
+{
+  "resource": "https://mcp.example.com/rag",
+  "authorization_servers": ["https://accounts.google.com"]
+}
 ```
 
-If you get `200 OK` without authentication, the hostname is exposed and the Access app is not protecting it.
+An unauthenticated protected tool call should return `401` with a `WWW-Authenticate: Bearer ...` challenge. A Cloudflare Access `302` redirect on the MCP hostname is a misconfiguration for Claude Custom Connectors.
 
 ## Connector URL For Claude
 
@@ -97,8 +112,8 @@ http://127.0.0.1:8788/rag
 ## Acceptance Criteria
 
 - Dify host local `/health` endpoints return `200`.
-- Public `mcp.example.com/rag` returns Cloudflare Access redirect before login.
-- After login, Claude Custom Connector can list `search_knowledge` and `add_knowledge`.
+- Public `mcp.example.com/.well-known/oauth-protected-resource/rag` returns OAuth protected resource metadata.
+- Claude Custom Connector can list `search_knowledge` and `add_knowledge`.
 - A search-only user can use `search_knowledge`.
 - A search-only user receives the write-denied message when calling `add_knowledge`.
 - A maintainer listed in `DIFY_RAG_ADD_ALLOWED_EMAILS` can use `add_knowledge`.

@@ -324,7 +324,6 @@ Recommended layout:
 Claude user
   -> Claude Custom Connector
   -> https://mcp.example.com/rag
-  -> Cloudflare Access
   -> Cloudflare Tunnel
   -> dify-rag-remote-mcp on the Dify host
   -> dify-rag-gateway on the Dify host
@@ -342,12 +341,37 @@ The public Custom Connector should point to the Remote MCP URL:
 https://mcp.example.com/rag
 ```
 
+Do not put Cloudflare Access in front of the Remote MCP hostname when using Claude Custom Connectors. Claude must be able to reach the MCP endpoint and complete OAuth with the connector. A Cloudflare Access login redirect is not an MCP OAuth flow and will make Claude report that the server cannot be reached.
+
+Use OAuth on the Remote MCP server instead:
+
+```bash
+DIFY_RAG_REMOTE_PUBLIC_URL=https://mcp.example.com/rag
+DIFY_RAG_AUTH_PROVIDER=google
+DIFY_RAG_AUTH_ALLOWED_EMAILS=user@example.com,maintainer@example.com
+DIFY_RAG_AUTH_ALLOWED_DOMAINS=example.com
+```
+
+`DIFY_RAG_AUTH_ALLOWED_EMAILS` and `DIFY_RAG_AUTH_ALLOWED_DOMAINS` control who can use the connector at all. Leave `DIFY_RAG_AUTH_ALLOW_ALL` empty unless this is a deliberately open test deployment.
+
+For Google OAuth, create a Web OAuth client in Google Cloud and configure Claude's Custom Connector with that client ID and client secret. For Claude.ai, Claude Desktop, Claude mobile, and Cowork, register this authorized redirect URI on the OAuth client:
+
+```text
+https://claude.ai/api/mcp/auth_callback
+```
+
+The OAuth scopes are:
+
+```text
+openid email profile
+```
+
 The Remote MCP server exposes exactly two user-facing tools:
 
 - `search_knowledge`: `Search the configured Dify knowledge base for relevant source chunks.`
 - `add_knowledge`: `Add or update prepared Markdown in the configured Dify knowledge base. Maintainer access is required.`
 
-Configure the allowlist on the Dify host:
+Configure write access separately on the Dify host:
 
 ```bash
 DIFY_RAG_ADD_ALLOWED_EMAILS=admin@example.com,maintainer@example.com
@@ -374,15 +398,17 @@ The Remote MCP server listens on `127.0.0.1:8788` by default. Put a Cloudflare T
 https://mcp.example.com -> http://127.0.0.1:8788
 ```
 
-Set `DIFY_RAG_REMOTE_MCP_PATH=/rag` on the Dify host. Protect the hostname with Cloudflare Access or equivalent identity-aware access control so the Remote MCP server receives the authenticated user email header.
+Set `DIFY_RAG_REMOTE_MCP_PATH=/rag` on the Dify host. The Remote MCP endpoint should be reachable over public HTTPS, with authentication handled by the MCP OAuth flow.
 
 For Claude Custom Connector setup, use Streamable HTTP and the `/rag` endpoint. Claude custom connectors are configured from Claude settings and connect to a publicly reachable HTTPS MCP server.
 
 ### Manage Cloudflare Access Emails
 
-For small deployments, you can add or remove allowed connector users from the command line instead of opening the Cloudflare dashboard every time.
+For small gateway deployments, you can add or remove Cloudflare Access users from the command line instead of opening the Cloudflare dashboard every time.
 
-This is an operator-only task. Regular connector users do not need a Cloudflare API token, this repository, a terminal command, or local setup for `rag-access-email`. They only need to connect Claude to the published Custom Connector URL after their email address has been allowed in Cloudflare Access.
+This is an operator-only task. Regular connector users do not need a Cloudflare API token, this repository, a terminal command, or local setup for `rag-access-email`.
+
+For Remote MCP / Custom Connector mode, prefer `DIFY_RAG_AUTH_ALLOWED_EMAILS` and `DIFY_RAG_AUTH_ALLOWED_DOMAINS` for connector access. Use Cloudflare Access for the gateway hostname or other operator-only routes, not as the primary authentication layer in front of the MCP hostname.
 
 Recommended operation:
 
@@ -432,7 +458,7 @@ rag-access-email add user@example.com
 rag-access-email list
 ```
 
-This controls who can reach the Remote MCP connector through Cloudflare Access. It is separate from `DIFY_RAG_ADD_ALLOWED_EMAILS`, which controls who can use the `add_knowledge` tool after they are already connected.
+This controls Cloudflare Access policies for gateway or operator-only routes. Remote MCP connector access is controlled separately by `DIFY_RAG_AUTH_ALLOWED_EMAILS` and `DIFY_RAG_AUTH_ALLOWED_DOMAINS`. Write access is controlled separately by `DIFY_RAG_ADD_ALLOWED_EMAILS`.
 
 ## Usage From Claude Code
 
@@ -560,7 +586,8 @@ This does not remove anything from Dify.
 - For public forks, keep examples generic and avoid real customer, dataset, or network details.
 - For shared deployments, publish only the gateway or Remote MCP endpoint. Do not expose the Dify web/API service directly to the Internet.
 - For Custom Connector deployments, point Claude at the Remote MCP endpoint rather than Dify itself.
-- Protect the gateway and Remote MCP endpoint with Cloudflare Access, a private network, or equivalent controls before running them against sensitive knowledge bases.
+- Protect hosted gateway URLs with Cloudflare Access, a private network, or equivalent controls before running them against sensitive knowledge bases.
+- For Remote MCP Custom Connector deployments, use MCP OAuth on the Remote MCP server. Do not rely on a Cloudflare Access redirect in front of the MCP URL.
 - Keep `DIFY_RAG_ADD_ALLOWED_EMAILS` narrow. Search and write permissions are intentionally separate.
 
 ## Troubleshooting

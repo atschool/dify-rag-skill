@@ -1,6 +1,6 @@
 # Set Up The Access Allowlist Admin Command
 
-Use this runbook for administrators who add or remove connector users from Cloudflare Access.
+Use this runbook for administrators who add or remove users from a Cloudflare Access policy for gateway or operator-only routes.
 
 Regular connector users do not need this command. Windows users do not need it unless they also manage the Cloudflare Access allowlist.
 
@@ -14,7 +14,7 @@ rag-access-email add user@example.com
 rag-access-email remove user@example.com
 ```
 
-This controls who can reach the Remote MCP connector. It does not grant `add_knowledge` permission. Write permission is controlled separately by `DIFY_RAG_ADD_ALLOWED_EMAILS` on the Dify host.
+This controls the selected Cloudflare Access policy. Remote MCP connector access is controlled separately by `DIFY_RAG_AUTH_ALLOWED_EMAILS` and `DIFY_RAG_AUTH_ALLOWED_DOMAINS`. Write permission is controlled separately by `DIFY_RAG_ADD_ALLOWED_EMAILS` on the Dify host.
 
 ## Install The Shortcut
 
