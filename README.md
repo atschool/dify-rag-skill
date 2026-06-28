@@ -61,6 +61,8 @@ When you ask Claude Code to search the knowledge base, the search skill:
 - `remote-mcp/`: Streamable HTTP Remote MCP server for Claude Custom Connectors.
 - `install.sh`: interactive installer for both skills.
 - `config.example`: safe config template with no real URL or API key.
+- `AGENTS.md`: entry point for Claude, Codex, and other agents operating this repo.
+- `docs/agents/`: task-specific setup, onboarding, and troubleshooting runbooks for agents.
 
 ## Requirements
 
