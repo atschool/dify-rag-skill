@@ -17,6 +17,7 @@ CONFIG_DIR="$HOME/.dify-rag"
 CONFIG_FILE="$CONFIG_DIR/config"
 MCP_SERVER_DIR="$CONFIG_DIR/mcp-server"
 GATEWAY_DIR="$CONFIG_DIR/gateway"
+REMOTE_MCP_DIR="$CONFIG_DIR/remote-mcp"
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 get_config_value() {
@@ -87,7 +88,7 @@ echo "========================================"
 echo ""
 
 # 1. skills フォルダへ配置
-mkdir -p "$INJECT_SKILL_DIR" "$SEARCH_SKILL_DIR" "$CONFIG_DIR" "$MCP_SERVER_DIR" "$GATEWAY_DIR"
+mkdir -p "$INJECT_SKILL_DIR" "$SEARCH_SKILL_DIR" "$CONFIG_DIR" "$MCP_SERVER_DIR" "$GATEWAY_DIR" "$REMOTE_MCP_DIR"
 cp "$SRC_DIR/SKILL.md" "$INJECT_SKILL_DIR/SKILL.md"
 cp "$SRC_DIR/dify_inject.py" "$INJECT_SKILL_DIR/dify_inject.py"
 cp "$SRC_DIR/search/SKILL.md" "$SEARCH_SKILL_DIR/SKILL.md"
@@ -101,13 +102,20 @@ cp "$SRC_DIR/dify_inject.py" "$GATEWAY_DIR/dify_inject.py"
 cp "$SRC_DIR/dify_search.py" "$GATEWAY_DIR/dify_search.py"
 cp "$SRC_DIR/gateway/server.mjs" "$GATEWAY_DIR/server.mjs"
 cp "$SRC_DIR/gateway/package.json" "$GATEWAY_DIR/package.json"
+cp "$SRC_DIR/remote-mcp/server.mjs" "$REMOTE_MCP_DIR/server.mjs"
+cp "$SRC_DIR/remote-mcp/package.json" "$REMOTE_MCP_DIR/package.json"
+if [ -f "$SRC_DIR/remote-mcp/package-lock.json" ]; then
+    cp "$SRC_DIR/remote-mcp/package-lock.json" "$REMOTE_MCP_DIR/package-lock.json"
+fi
 chmod +x "$INJECT_SKILL_DIR/dify_inject.py" "$SEARCH_SKILL_DIR/dify_search.py"
 chmod +x "$MCP_SERVER_DIR/server.mjs" "$MCP_SERVER_DIR/dify_inject.py" "$MCP_SERVER_DIR/dify_search.py"
 chmod +x "$GATEWAY_DIR/server.mjs" "$GATEWAY_DIR/dify_inject.py" "$GATEWAY_DIR/dify_search.py"
+chmod +x "$REMOTE_MCP_DIR/server.mjs"
 echo "[1/3] Installed ingest skill: $INJECT_SKILL_DIR"
 echo "      Installed search skill: $SEARCH_SKILL_DIR"
 echo "      Installed MCP server: $MCP_SERVER_DIR"
 echo "      Installed gateway server: $GATEWAY_DIR"
+echo "      Installed Remote MCP server: $REMOTE_MCP_DIR"
 
 # 2. poppler (pdftoppm) チェック
 if command -v pdftoppm >/dev/null 2>&1; then
@@ -128,7 +136,12 @@ if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
         cd "$MCP_SERVER_DIR"
         npm install --omit=dev --silent
     )
+    (
+        cd "$REMOTE_MCP_DIR"
+        npm install --omit=dev --silent
+    )
     echo "      MCP server dependencies: OK"
+    echo "      Remote MCP server dependencies: OK"
 else
     echo "      node/npm: not found. MCP server dependencies were not installed."
     echo "      Install Node.js, then run ./install.sh again to enable Claude.app MCP use."
@@ -155,6 +168,11 @@ ensure_config_key "DIFY_RAG_GATEWAY_URL" "$CONFIG_FILE"
 ensure_config_key "DIFY_RAG_SHARED_SECRET" "$CONFIG_FILE"
 ensure_config_key "DIFY_RAG_CLOUDFLARE_ACCESS" "$CONFIG_FILE"
 ensure_config_key "DIFY_RAG_CLOUDFLARED_BIN" "$CONFIG_FILE"
+ensure_config_key "DIFY_RAG_REMOTE_GATEWAY_URL" "$CONFIG_FILE"
+ensure_config_key "DIFY_RAG_REMOTE_MCP_HOST" "$CONFIG_FILE"
+ensure_config_key "DIFY_RAG_REMOTE_MCP_PORT" "$CONFIG_FILE"
+ensure_config_key "DIFY_RAG_REMOTE_MCP_PATH" "$CONFIG_FILE"
+ensure_config_key "DIFY_RAG_ADD_ALLOWED_EMAILS" "$CONFIG_FILE"
 chmod 600 "$CONFIG_FILE"
 
 CURRENT_GATEWAY_URL="$(get_config_value "DIFY_RAG_GATEWAY_URL" "$CONFIG_FILE")"
@@ -201,9 +219,13 @@ if [ -n "$CURRENT_GATEWAY_URL" ]; then
     echo "  - dify-rag-inject: add Drive documents to Dify"
     echo "  - dify-rag-search: retrieve Dify chunks for Claude to answer from"
     echo "  - dify-rag MCP server: expose Dify search and ingestion to Claude.app"
+    echo "  - dify-rag Remote MCP server: expose team connector over Streamable HTTP"
     echo ""
     echo "Claude.app MCP server command:"
     echo "  node $MCP_SERVER_DIR/server.mjs"
+    echo ""
+    echo "Remote MCP server command for the Dify host:"
+    echo "  node $REMOTE_MCP_DIR/server.mjs"
     exit 0
 fi
 
@@ -307,9 +329,13 @@ echo "Installed:"
 echo "  - dify-rag-inject: add Drive documents to Dify"
 echo "  - dify-rag-search: retrieve Dify chunks for Claude to answer from"
 echo "  - dify-rag MCP server: expose Dify search and ingestion to Claude.app"
+echo "  - dify-rag Remote MCP server: expose team connector over Streamable HTTP"
 echo ""
 echo "Claude.app MCP server command:"
 echo "  node $MCP_SERVER_DIR/server.mjs"
 echo ""
 echo "Gateway server command for the Dify host:"
 echo "  node $GATEWAY_DIR/server.mjs"
+echo ""
+echo "Remote MCP server command for the Dify host:"
+echo "  node $REMOTE_MCP_DIR/server.mjs"

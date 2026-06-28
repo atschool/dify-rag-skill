@@ -1,0 +1,17 @@
+{
+  "name": "dify-rag-remote-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Remote MCP server for the Dify RAG team connector.",
+  "bin": {
+    "dify-rag-remote-mcp": "./server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.1.13"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

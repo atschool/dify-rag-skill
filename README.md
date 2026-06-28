@@ -8,6 +8,7 @@ This repository contains two companion skills:
 - `dify-rag-search`: search Dify knowledge bases and return retrieved chunks so Claude can write the final answer.
 - `dify-rag` MCP server: expose Dify search and ingestion to Claude.app / Claude Desktop.
 - `dify-rag-gateway`: optional HTTP gateway for teams, so employee machines do not need Dify API keys.
+- `dify-rag-remote-mcp`: Remote MCP server for a Claude Custom Connector.
 
 The design keeps responsibilities separate:
 
@@ -15,6 +16,7 @@ The design keeps responsibilities separate:
 - Claude Code reads source documents, prepares Markdown, inspects retrieved chunks, and writes user-facing answers.
 - Dify is not asked to generate the final answer in the search flow.
 - In team mode, only the gateway host stores Dify API keys. Employee machines call the gateway.
+- In connector mode, employees connect Claude to one Remote MCP endpoint. Search is available to connector users, while document addition is allowlisted by email.
 
 This is an independent helper project. It is not an official Dify, Anthropic, or Google product.
 
@@ -56,6 +58,7 @@ When you ask Claude Code to search the knowledge base, the search skill:
 - `dify_search.py`: Python client for Dify dataset listing and retrieval.
 - `mcp-server/`: local MCP server for Claude.app / Claude Desktop.
 - `gateway/`: HTTP gateway for shared/team deployments.
+- `remote-mcp/`: Streamable HTTP Remote MCP server for Claude Custom Connectors.
 - `install.sh`: interactive installer for both skills.
 - `config.example`: safe config template with no real URL or API key.
 
@@ -135,8 +138,9 @@ The installer will:
 - Copy the ingestion skill to `~/.claude/skills/dify-rag-inject/`.
 - Copy the search skill to `~/.claude/skills/dify-rag-search/`.
 - Copy the MCP server to `~/.dify-rag/mcp-server/`.
+- Copy the Remote MCP server to `~/.dify-rag/remote-mcp/`.
 - Check whether `pdftoppm` is available.
-- Install MCP server npm dependencies when Node.js and npm are available.
+- Install MCP server and Remote MCP npm dependencies when Node.js and npm are available.
 - Create a shared local config at `~/.dify-rag/config`.
 - Ask for your Dify Workflow API key.
 - Ask for your Dify Knowledge Base API key.
@@ -199,9 +203,14 @@ DIFY_APP_KEY=
 DIFY_DATASET_API_KEY=
 DIFY_DATASET_IDS=
 DIFY_RAG_GATEWAY_URL=
+DIFY_RAG_REMOTE_GATEWAY_URL=
 DIFY_RAG_SHARED_SECRET=
 DIFY_RAG_CLOUDFLARE_ACCESS=auto
 DIFY_RAG_CLOUDFLARED_BIN=cloudflared
+DIFY_RAG_REMOTE_MCP_HOST=127.0.0.1
+DIFY_RAG_REMOTE_MCP_PORT=8788
+DIFY_RAG_REMOTE_MCP_PATH=/mcp
+DIFY_RAG_ADD_ALLOWED_EMAILS=
 ```
 
 Use the Dify API base URL for `DIFY_BASE_URL`. Common examples look like:
@@ -217,9 +226,12 @@ Use:
 - `DIFY_DATASET_API_KEY` for Knowledge Base search API access.
 - `DIFY_DATASET_IDS` only when you want to restrict search to specific datasets.
 - `DIFY_RAG_GATEWAY_URL` for employee/team installs that should call a hosted gateway instead of Dify directly.
+- `DIFY_RAG_REMOTE_GATEWAY_URL` for the Remote MCP server when it should call a different gateway URL. Leave empty on the Dify host to use `http://127.0.0.1:8787`.
 - `DIFY_RAG_SHARED_SECRET` only when you deliberately protect the gateway with a shared bearer token. Prefer Cloudflare Access or another identity-aware proxy for team use.
 - `DIFY_RAG_CLOUDFLARE_ACCESS=auto` lets the MCP server automatically attach a user-scoped Cloudflare Access token when the gateway redirects to Access.
 - `DIFY_RAG_CLOUDFLARED_BIN` can point to a custom `cloudflared` binary path.
+- `DIFY_RAG_REMOTE_MCP_HOST`, `DIFY_RAG_REMOTE_MCP_PORT`, and `DIFY_RAG_REMOTE_MCP_PATH` control the Remote MCP listener. The default endpoint is `http://127.0.0.1:8788/mcp`.
+- `DIFY_RAG_ADD_ALLOWED_EMAILS` is a comma-separated allowlist for `add_knowledge`. Users not on the list can still use `search_knowledge`.
 
 Environment variables are also supported and take precedence over the config file:
 
@@ -230,6 +242,7 @@ export DIFY_DATASET_API_KEY="your-knowledge-base-api-key"
 export DIFY_DATASET_IDS="dataset-id-1,dataset-id-2"
 export DIFY_RAG_GATEWAY_URL="https://your-gateway.example.com"
 export DIFY_RAG_CLOUDFLARE_ACCESS="auto"
+export DIFY_RAG_ADD_ALLOWED_EMAILS="admin@example.com,knowledge-owner@example.com"
 ```
 
 ## Team Gateway Mode
@@ -296,6 +309,70 @@ cloudflared access login https://your-gateway.example.com
 ```
 
 After login, the MCP server obtains a user-scoped Access token with `cloudflared access token -app=...` and sends it as the `cf-access-token` header. Employees do not receive Dify API keys.
+
+## Remote MCP / Custom Connector Mode
+
+Use Remote MCP mode when employees should use Claude from web, desktop, or mobile without installing this repository locally.
+
+Recommended layout:
+
+```text
+Employee Claude
+  -> Claude Custom Connector
+  -> https://your-mcp.example.com/mcp
+  -> Cloudflare Access
+  -> Cloudflare Tunnel
+  -> dify-rag-remote-mcp on the Dify host
+  -> dify-rag-gateway on the Dify host
+  -> local Dify API
+```
+
+Keep the two hostnames conceptually separate:
+
+- `rag-api.example.com`: internal gateway API for installed local clients or debugging.
+- `rag-mcp.example.com`: Remote MCP endpoint that Claude Custom Connector connects to.
+
+The public Custom Connector should point to the Remote MCP URL:
+
+```text
+https://rag-mcp.example.com/mcp
+```
+
+The Remote MCP server exposes exactly two user-facing tools:
+
+- `search_knowledge`: `社内ナレッジから関連情報を検索します。`
+- `add_knowledge`: `資料を社内ナレッジに追加・更新します。利用権限があるメンバー向けの機能です。`
+
+Configure the allowlist on the Dify host:
+
+```bash
+DIFY_RAG_ADD_ALLOWED_EMAILS=admin@example.com,knowledge-owner@example.com
+```
+
+If a user who is not allowlisted tries to add material, the tool returns:
+
+```text
+この機能は、現在のアカウントでは利用できません。資料追加が必要な場合は、管理者またはナレッジ担当者に依頼してください。
+```
+
+On the Dify host, install and start both local services:
+
+```bash
+./install.sh
+./scripts/install-gateway-launchd.sh
+./scripts/install-remote-mcp-launchd.sh
+./scripts/doctor-remote-mcp.sh
+```
+
+The Remote MCP server listens on `127.0.0.1:8788` by default. Put a Cloudflare Tunnel public hostname in front of it:
+
+```text
+https://rag-mcp.example.com -> http://127.0.0.1:8788
+```
+
+Protect that hostname with Cloudflare Access or equivalent identity-aware access control so the Remote MCP server receives the authenticated user email header.
+
+For Claude Custom Connector setup, use Streamable HTTP and the `/mcp` endpoint. Claude custom connectors are configured from Claude settings and connect to a publicly reachable HTTPS MCP server.
 
 ## Usage From Claude Code
 
@@ -421,8 +498,10 @@ This does not remove anything from Dify.
 - The search client prints retrieved source chunks. Treat terminal output and logs accordingly.
 - Review generated Markdown before uploading if the source document contains sensitive data.
 - For public forks, keep examples generic and avoid real company, customer, dataset, or network details.
-- For team deployments, publish only the gateway. Do not expose the Dify web/API service directly to the Internet.
-- Protect the gateway with Cloudflare Access, a private network, or equivalent controls before running it against sensitive knowledge bases.
+- For team deployments, publish only the gateway or Remote MCP endpoint. Do not expose the Dify web/API service directly to the Internet.
+- For Custom Connector deployments, point Claude at the Remote MCP endpoint rather than Dify itself.
+- Protect the gateway and Remote MCP endpoint with Cloudflare Access, a private network, or equivalent controls before running them against sensitive knowledge bases.
+- Keep `DIFY_RAG_ADD_ALLOWED_EMAILS` narrow. Search and write permissions are intentionally separate.
 
 ## Troubleshooting
 
@@ -448,6 +527,8 @@ Run basic checks before opening a pull request:
 bash -n install.sh
 python3 -m py_compile dify_inject.py dify_search.py
 node --check mcp-server/server.mjs
+node --check gateway/server.mjs
+node --check remote-mcp/server.mjs
 ```
 
 Test the installer without touching your real home directory:

@@ -12,6 +12,17 @@ DIFY_DATASET_IDS=
 # Employee installs can use a hosted gateway instead of local Dify API keys.
 # Leave empty on the Dify host itself.
 DIFY_RAG_GATEWAY_URL=
+DIFY_RAG_REMOTE_GATEWAY_URL=
 DIFY_RAG_SHARED_SECRET=
 DIFY_RAG_CLOUDFLARE_ACCESS=auto
 DIFY_RAG_CLOUDFLARED_BIN=cloudflared
+
+# Remote MCP is the public Custom Connector endpoint.
+# Put Cloudflare Tunnel in front of http://127.0.0.1:8788/mcp.
+DIFY_RAG_REMOTE_MCP_HOST=127.0.0.1
+DIFY_RAG_REMOTE_MCP_PORT=8788
+DIFY_RAG_REMOTE_MCP_PATH=/mcp
+
+# Comma-separated email allowlist for add_knowledge.
+# Search remains available to everyone who can access the connector.
+DIFY_RAG_ADD_ALLOWED_EMAILS=
