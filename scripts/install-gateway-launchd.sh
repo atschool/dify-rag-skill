@@ -7,7 +7,9 @@
 #
 set -euo pipefail
 
-LABEL="com.atschool.dify-rag-gateway"
+# Launchd labels only need to be stable identifiers. Use a project-local
+# default instead of a reverse-DNS name that implies domain ownership.
+LABEL="${DIFY_RAG_GATEWAY_LAUNCHD_LABEL:-dify-rag.gateway}"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 CONFIG_DIR="$HOME/.dify-rag"
 GATEWAY_DIR="$CONFIG_DIR/gateway"

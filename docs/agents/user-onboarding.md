@@ -82,7 +82,7 @@ DIFY_RAG_ADD_ALLOWED_EMAILS=admin@example.com,maintainer@example.com
 Restart the Remote MCP service:
 
 ```bash
-launchctl kickstart -k "gui/$(id -u)/com.atschool.dify-rag-remote-mcp"
+launchctl kickstart -k "gui/$(id -u)/dify-rag.remote-mcp"
 ./scripts/doctor-remote-mcp.sh
 ```
 

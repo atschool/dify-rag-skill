@@ -7,7 +7,9 @@
 #
 set -euo pipefail
 
-LABEL="com.atschool.dify-rag-remote-mcp"
+# Launchd labels only need to be stable identifiers. Use a project-local
+# default instead of a reverse-DNS name that implies domain ownership.
+LABEL="${DIFY_RAG_REMOTE_MCP_LAUNCHD_LABEL:-dify-rag.remote-mcp}"
 PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 CONFIG_DIR="$HOME/.dify-rag"
 REMOTE_MCP_DIR="$CONFIG_DIR/remote-mcp"
